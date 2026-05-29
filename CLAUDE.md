@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-A network of generic LED controllers for mounting lights onto musical instruments in a live band setting. Controllers communicate with each other wirelessly to coordinate lighting across an entire band's rig.
+A generic networked LED lighting platform for coordinating lights across any collection of objects. Controllers communicate wirelessly to synchronise lighting behaviour across an entire rig. The initial use case is a live band where lights are mounted on instruments and other objects on stage, but the platform is object-agnostic — object-specific behaviour lives in fixtures and themes, not in the core network or controller logic.
 
 ## Hardware
 
@@ -41,6 +41,10 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - Buttons wired active-low: GPIO → button → GND, internal pull-up enabled
 - Avoid GPIO 0, 2, 12 (boot-strapping pins)
+
+## Collaboration
+
+- When the user proposes an approach that conflicts with best practices or has meaningful tradeoffs, push back with a clear argument before proceeding. Don't just implement what's asked if there's a good reason not to.
 
 ## Core Design Rules
 

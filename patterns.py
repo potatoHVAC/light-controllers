@@ -1,6 +1,3 @@
-import math
-
-
 class Pattern:
     def start(self):
         pass
@@ -14,23 +11,18 @@ class OnPattern(Pattern):
         return 1023
 
 
+class HalfPattern(Pattern):
+    def duty(self, elapsed_ms):
+        return 511
+
+
 class OffPattern(Pattern):
     def duty(self, elapsed_ms):
         return 0
 
 
-class PulsePattern(Pattern):
-    def __init__(self, period_ms=2000):
-        self.period_ms = period_ms
-
-    def duty(self, elapsed_ms):
-        t = (elapsed_ms % self.period_ms) / self.period_ms
-        brightness = (math.sin(t * 2 * math.pi - math.pi / 2) + 1) / 2
-        return int(brightness * 1023)
-
-
 class StrobePattern(Pattern):
-    def __init__(self, rate_ms=100):
+    def __init__(self, rate_ms=500):
         self.rate_ms = rate_ms
 
     def duty(self, elapsed_ms):
@@ -39,7 +31,7 @@ class StrobePattern(Pattern):
 
 PATTERNS = [
     OnPattern(),
-    PulsePattern(period_ms=2000),
-    StrobePattern(rate_ms=100),
+    HalfPattern(),
     OffPattern(),
+    StrobePattern(rate_ms=500),
 ]
