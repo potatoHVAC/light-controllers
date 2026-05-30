@@ -20,37 +20,41 @@ class Controller:
         self._save_after = 0
         self._scenes = []
 
-        state = storage.load({'theme': 0, 'scene': 0})
+        state = storage.load({'theme': 0, 'scenes': [0] * len(themes)})
         self._theme_idx = min(state['theme'], len(themes) - 1)
+        self._scene_idxs = state['scenes']
+        if len(self._scene_idxs) < len(themes):
+            self._scene_idxs += [0] * (len(themes) - len(self._scene_idxs))
         self._load_scenes()
-        self._scene_idx = min(state['scene'], len(self._scenes) - 1)
+        self._scene_idxs[self._theme_idx] = min(
+            self._scene_idxs[self._theme_idx], len(self._scenes) - 1
+        )
 
     def start(self, now_ms):
         """Play the initial scene. Call once after construction."""
         self._play_current(now_ms)
 
     def next_scene(self, now_ms):
-        self._scene_idx = (self._scene_idx + 1) % len(self._scenes)
+        self._scene_idxs[self._theme_idx] = (self._scene_idxs[self._theme_idx] + 1) % len(self._scenes)
         self._play_current(now_ms)
         self._schedule_save(now_ms)
         if self._network:
-            self._network.broadcast_pattern(self._scene_idx)
+            self._network.broadcast_pattern(self._scene_idxs[self._theme_idx])
 
     def next_theme(self, now_ms):
         self._theme_idx = (self._theme_idx + 1) % len(self._themes)
-        self._scene_idx = 0
         self._load_scenes()
         self._play_current(now_ms)
         self._schedule_save(now_ms)
         if self._network:
-            self._network.broadcast_pattern(self._scene_idx)
+            self._network.broadcast_pattern(self._scene_idxs[self._theme_idx])
 
     def update(self, now_ms):
         """Advance the current scene and flush to hardware. Call every loop tick."""
         self._fixture.update(now_ms)
         if self._save_pending and time.ticks_diff(now_ms, self._save_after) >= 0:
             self._save_pending = False
-            storage.save({'theme': self._theme_idx, 'scene': self._scene_idx})
+            storage.save({'theme': self._theme_idx, 'scenes': self._scene_idxs})
 
     def _load_scenes(self):
         self._scenes = self._themes[self._theme_idx].scenes()
@@ -58,7 +62,7 @@ class Controller:
             self._fixture.add_scene(name, scene)
 
     def _play_current(self, now_ms):
-        name, _ = self._scenes[self._scene_idx]
+        name, _ = self._scenes[self._scene_idxs[self._theme_idx]]
         self._fixture.play(name, now_ms)
 
     def _schedule_save(self, now_ms):
