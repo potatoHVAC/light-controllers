@@ -54,6 +54,7 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 
 - When the user proposes an approach that conflicts with best practices or has meaningful tradeoffs, push back with a clear argument before proceeding. Don't just implement what's asked if there's a good reason not to.
+- After completing work, check the Upcoming Work section and remove any items that were just addressed.
 
 
 ## Scripts
@@ -78,6 +79,12 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - HSV color math written in-house (no FastLED equivalent exists for MicroPython)
 - Controllers use a unified `LightRig` abstraction so network logic is decoupled from light type
 
+## Upcoming Work
+
+- **OTA updates:** Push firmware to all controllers over WiFi rather than physical deployment. Significant time saver at scale.
+- **Brightness as a packet field:** Brightness is a network-level decision, not an individual controller setting. The mesh packet should carry a brightness value that all controllers apply uniformly. Not a per-device override.
+- **Jitter on heartbeat_request response:** Randomise the delay before responding to a heartbeat_request to prevent a storm when a new controller joins. Important before scaling past ~10 controllers.
+
 ## Long-Term Roadmap (not immediate priority)
 
 - **Art-Net integration:** Allow a main node (or bridge device) to receive Art-Net DMX-over-IP from professional lighting consoles, translating to ESP-NOW commands across the rig network. Keep protocol boundaries clean so this layer can be added without restructuring the core network.
@@ -85,3 +92,9 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **Main controller:** A main always wins — its commands override any controller-initiated state. The main is open to requests from individual controllers but decides whether to relay them to the network. Controllers have tiers of authority; the main grants or ignores override requests based on tier. Individual controllers must never need to know about the hierarchy — they just receive and apply state. The `type` field in the mesh packet and the `apply_state` interface on the controller are the designed extension points for this.
 
 - **Bridge architecture:** At 10,000-unit scale the main speaks a higher-level protocol (Art-Net, OSC, or custom TCP/IP) to bridge nodes, each of which manages a zone of up to ~200 controllers over ESP-NOW. Controllers are unaware they are in a zone — same firmware, same mesh code throughout.
+
+- **Web/phone configuration interface:** ESP32 hosts a WiFi access point for show-day adjustments without redeployment. Must be secured so audience members cannot interfere — authentication required, ideally with role-based access so a band member cannot accidentally trigger main-level overrides.
+
+- **Beat-sync patterns:** Patterns that accept BPM as a parameter and pulse on the beat. BPM set manually or broadcast from the main controller.
+
+- **Error mode display:** Use the addressable strips themselves as the error indicator. On network failure, boot failure, or other fault conditions, display a distinct error pattern on the strips rather than a separate status LED.
