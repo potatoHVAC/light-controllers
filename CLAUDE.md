@@ -83,7 +83,6 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **OTA updates:** Push firmware to all controllers over WiFi rather than physical deployment. Significant time saver at scale.
 - **Brightness as a packet field:** Brightness is a network-level decision, not an individual controller setting. The mesh packet should carry a brightness value that all controllers apply uniformly. Not a per-device override.
-- **Jitter on heartbeat_request response:** Randomise the delay before responding to a heartbeat_request to prevent a storm when a new controller joins. Important before scaling past ~10 controllers.
 
 ## Long-Term Roadmap (not immediate priority)
 

@@ -30,10 +30,17 @@ def main():
     mesh = Mesh()
     controller = Controller(fixture, themes, network=mesh)
 
-    now_ms = time.ticks_ms()
-    sync = mesh.wait_for_sync()
-    if sync:
-        controller.apply_state(sync[0], sync[1], now_ms)
+    # Stay dark until synced from network or manually started via button press.
+    # Never fall back to saved state automatically — unexpected state mid-show
+    # is worse than a delay.
+    while True:
+        now_ms = time.ticks_ms()
+        if button.update(now_ms):
+            break
+        sync = mesh.check_sync()
+        if sync:
+            controller.apply_state(sync[0], sync[1], now_ms)
+            break
 
     controller.start(time.ticks_ms())
 

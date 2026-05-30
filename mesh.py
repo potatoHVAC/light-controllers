@@ -3,6 +3,7 @@ import espnow
 import json
 import network as _net
 import ubinascii
+import random
 
 BROADCAST = b'\xff\xff\xff\xff\xff\xff'
 
@@ -14,13 +15,17 @@ class Mesh:
     number. Receivers ignore messages from themselves and drop anything with
     a sequence number no higher than the last accepted message from that sender.
 
-    On boot each controller broadcasts a hello. Any controller that receives
-    a hello immediately replies with a heartbeat carrying its current state,
-    so the newcomer syncs within one round trip instead of waiting up to
-    HEARTBEAT_MS.
+    On boot each controller broadcasts a heartbeat_request with a random nonce.
+    Receivers schedule a response after a random jitter delay (0–JITTER_MAX_MS).
+    While waiting, each receiver counts how many other controllers have already
+    responded with that nonce. Once SUPPRESS_THRESHOLD responses are seen the
+    pending response is cancelled — the newcomer already has enough data. This
+    keeps the response storm bounded regardless of network size.
     """
 
-    HEARTBEAT_MS = 5000
+    HEARTBEAT_MS       = 5000
+    JITTER_MAX_MS      = 500
+    SUPPRESS_THRESHOLD = 3
 
     def __init__(self):
         sta = _net.WLAN(_net.STA_IF)
@@ -32,28 +37,29 @@ class Mesh:
         self._seq = 0
         self._last_seqs = {}
         self._last_heartbeat_ms = 0
+        self._pending = {}  # nonce -> {'deadline': ms, 'count': n}
         self._seq += 1
-        self._send({'type': 'heartbeat_request', 'sender': self._mac, 'seq': self._seq})
+        self._send({
+            'type': 'heartbeat_request',
+            'sender': self._mac,
+            'seq': self._seq,
+            'nonce': random.randint(0, 0xFFFFFF),
+        })
 
-    SYNC_TIMEOUT_MS = 2000
-
-    def wait_for_sync(self, timeout_ms=None):
-        """Block waiting for a state message from the network.
-        Returns (theme, scene) if received, None if timeout elapsed."""
-        timeout_ms = timeout_ms if timeout_ms is not None else self.SYNC_TIMEOUT_MS
-        start = time.ticks_ms()
-        while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
-            _, msg = self._en.recv(0)
-            if not msg:
-                continue
-            try:
-                data = json.loads(msg)
-            except Exception:
-                continue
-            if data.get('sender') == self._mac:
-                continue
-            if data.get('type') in ('heartbeat', 'change'):
-                return data.get('theme', 0), data.get('scene', 0)
+    def check_sync(self):
+        """Non-blocking check for a single incoming state message.
+        Returns (theme, scene) if a heartbeat or change is waiting, else None."""
+        _, msg = self._en.recv(0)
+        if not msg:
+            return None
+        try:
+            data = json.loads(msg)
+        except Exception:
+            return None
+        if data.get('sender') == self._mac:
+            return None
+        if data.get('type') in ('heartbeat', 'change'):
+            return data.get('theme', 0), data.get('scene', 0)
         return None
 
     def send_change(self, theme, scene):
@@ -62,11 +68,21 @@ class Mesh:
         self._broadcast('change', theme, scene)
 
     def tick(self, theme, scene, now_ms):
-        """Send heartbeat if due and return any valid incoming message, or None."""
+        """Send heartbeat if due, fire or suppress pending responses, return any valid incoming message."""
         if time.ticks_diff(now_ms, self._last_heartbeat_ms) >= self.HEARTBEAT_MS:
             self._last_heartbeat_ms = now_ms
             self._seq += 1
             self._broadcast('heartbeat', theme, scene)
+
+        for nonce in list(self._pending):
+            entry = self._pending[nonce]
+            if entry['count'] >= self.SUPPRESS_THRESHOLD:
+                del self._pending[nonce]
+            elif time.ticks_diff(now_ms, entry['deadline']) >= 0:
+                self._seq += 1
+                self._broadcast('heartbeat', theme, scene, nonce=nonce)
+                self._last_heartbeat_ms = now_ms
+                del self._pending[nonce]
 
         _, msg = self._en.recv(0)
         if not msg:
@@ -85,23 +101,35 @@ class Mesh:
             return None
 
         self._last_seqs[sender] = seq
+        msg_type = data.get('type')
 
-        if data.get('type') == 'heartbeat_request':
-            self._seq += 1
-            self._broadcast('heartbeat', theme, scene)
-            self._last_heartbeat_ms = now_ms
+        if msg_type == 'heartbeat_request':
+            nonce = data.get('nonce')
+            self._pending[nonce] = {
+                'deadline': time.ticks_add(now_ms, random.randint(0, self.JITTER_MAX_MS)),
+                'count': 0,
+            }
             return None
+
+        if msg_type == 'heartbeat':
+            nonce = data.get('nonce')
+            if nonce and nonce in self._pending:
+                self._pending[nonce]['count'] += 1
+            return data
 
         return data
 
-    def _broadcast(self, msg_type, theme, scene):
-        self._send({
+    def _broadcast(self, msg_type, theme, scene, nonce=None):
+        packet = {
             'type': msg_type,
             'sender': self._mac,
             'seq': self._seq,
             'theme': theme,
             'scene': scene,
-        })
+        }
+        if nonce is not None:
+            packet['nonce'] = nonce
+        self._send(packet)
 
     def _send(self, data):
         try:
