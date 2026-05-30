@@ -33,7 +33,28 @@ class Mesh:
         self._last_seqs = {}
         self._last_heartbeat_ms = 0
         self._seq += 1
-        self._send({'type': 'hello', 'sender': self._mac, 'seq': self._seq})
+        self._send({'type': 'heartbeat_request', 'sender': self._mac, 'seq': self._seq})
+
+    SYNC_TIMEOUT_MS = 2000
+
+    def wait_for_sync(self, timeout_ms=None):
+        """Block waiting for a state message from the network.
+        Returns (theme, scene) if received, None if timeout elapsed."""
+        timeout_ms = timeout_ms if timeout_ms is not None else self.SYNC_TIMEOUT_MS
+        start = time.ticks_ms()
+        while time.ticks_diff(time.ticks_ms(), start) < timeout_ms:
+            _, msg = self._en.recv(0)
+            if not msg:
+                continue
+            try:
+                data = json.loads(msg)
+            except Exception:
+                continue
+            if data.get('sender') == self._mac:
+                continue
+            if data.get('type') in ('heartbeat', 'change'):
+                return data.get('theme', 0), data.get('scene', 0)
+        return None
 
     def send_change(self, theme, scene):
         """Broadcast a scene change initiated by this controller."""
@@ -65,7 +86,7 @@ class Mesh:
 
         self._last_seqs[sender] = seq
 
-        if data.get('type') == 'hello':
+        if data.get('type') == 'heartbeat_request':
             self._seq += 1
             self._broadcast('heartbeat', theme, scene)
             self._last_heartbeat_ms = now_ms

@@ -65,6 +65,9 @@ class Controller:
         for name, scene in self._scenes:
             self._fixture.add_scene(name, scene)
 
+    def apply_state(self, theme_idx, scene_idx, now_ms):
+        self._apply_network_state(theme_idx, scene_idx, now_ms)
+
     def _apply_network_state(self, theme_idx, scene_idx, now_ms):
         theme_idx = min(theme_idx, len(self._themes) - 1)
         theme_changed = theme_idx != self._theme_idx

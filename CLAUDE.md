@@ -55,6 +55,7 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - When the user proposes an approach that conflicts with best practices or has meaningful tradeoffs, push back with a clear argument before proceeding. Don't just implement what's asked if there's a good reason not to.
 
+
 ## Scripts
 
 - Every shell script must have a `-h` flag that prints usage and a description of all flags.

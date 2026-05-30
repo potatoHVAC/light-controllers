@@ -27,7 +27,14 @@ def main():
         ColorTheme((0, 0, 255)),
     ]
 
-    controller = Controller(fixture, themes, network=Mesh())
+    mesh = Mesh()
+    controller = Controller(fixture, themes, network=mesh)
+
+    now_ms = time.ticks_ms()
+    sync = mesh.wait_for_sync()
+    if sync:
+        controller.apply_state(sync[0], sync[1], now_ms)
+
     controller.start(time.ticks_ms())
 
     while True:
