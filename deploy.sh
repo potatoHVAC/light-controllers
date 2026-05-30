@@ -6,9 +6,38 @@ fi
 
 PORT=$1
 
+echo "Wiping device..."
+mpremote connect "$PORT" exec "$(cat <<'EOF'
+import os
+
+def rmtree(path):
+    try:
+        for f in os.listdir(path):
+            rmtree(path + '/' + f)
+        os.rmdir(path)
+    except OSError:
+        os.remove(path)
+
+keep = {'boot.py'}
+for f in os.listdir('/'):
+    if f not in keep:
+        try: rmtree('/' + f)
+        except: pass
+EOF
+)"
+
+echo "Copying files..."
 mpremote connect "$PORT" \
   cp addressable_main.py :main.py + \
-  cp color.py button.py strip.py fixture.py storage.py controller.py themes.py : + \
-  cp -r patterns/ :patterns/
+  cp color.py button.py strip.py fixture.py storage.py controller.py themes.py :
+
+mpremote connect "$PORT" exec "import os; os.mkdir('patterns')"
+
+CMD=(mpremote connect "$PORT")
+for f in patterns/*.py; do
+  CMD+=(cp "$f" ":$f" +)
+done
+unset 'CMD[${#CMD[@]}-1]'
+"${CMD[@]}"
 
 echo "Done."
