@@ -4,6 +4,7 @@ from fixture import Fixture
 from button import Button
 from themes import RandomTheme, ColorTheme
 from controller import Controller
+from mesh import Mesh
 
 # LED Brain: 2 strips × 3 LEDs
 PRIMARY_PIN   = 26
@@ -26,7 +27,7 @@ def main():
         ColorTheme((0, 0, 255)),
     ]
 
-    controller = Controller(fixture, themes)
+    controller = Controller(fixture, themes, network=Mesh())
     controller.start(time.ticks_ms())
 
     while True:

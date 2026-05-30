@@ -39,7 +39,7 @@ class Controller:
         self._play_current(now_ms)
         self._schedule_save(now_ms)
         if self._network:
-            self._network.broadcast_pattern(self._scene_idxs[self._theme_idx])
+            self._network.send_change(self._theme_idx, self._scene_idxs[self._theme_idx])
 
     def next_theme(self, now_ms):
         self._theme_idx = (self._theme_idx + 1) % len(self._themes)
@@ -47,11 +47,15 @@ class Controller:
         self._play_current(now_ms)
         self._schedule_save(now_ms)
         if self._network:
-            self._network.broadcast_pattern(self._scene_idxs[self._theme_idx])
+            self._network.send_change(self._theme_idx, self._scene_idxs[self._theme_idx])
 
     def update(self, now_ms):
         """Advance the current scene and flush to hardware. Call every loop tick."""
         self._fixture.update(now_ms)
+        if self._network:
+            msg = self._network.tick(self._theme_idx, self._scene_idxs[self._theme_idx], now_ms)
+            if msg:
+                self._apply_network_state(msg.get('theme', 0), msg.get('scene', 0), now_ms)
         if self._save_pending and time.ticks_diff(now_ms, self._save_after) >= 0:
             self._save_pending = False
             storage.save({'theme': self._theme_idx, 'scenes': self._scene_idxs})
@@ -60,6 +64,20 @@ class Controller:
         self._scenes = self._themes[self._theme_idx].scenes()
         for name, scene in self._scenes:
             self._fixture.add_scene(name, scene)
+
+    def _apply_network_state(self, theme_idx, scene_idx, now_ms):
+        theme_idx = min(theme_idx, len(self._themes) - 1)
+        theme_changed = theme_idx != self._theme_idx
+        if theme_changed:
+            self._theme_idx = theme_idx
+            self._load_scenes()
+        scene_idx = min(scene_idx, len(self._scenes) - 1)
+        scene_changed = scene_idx != self._scene_idxs[self._theme_idx]
+        if scene_changed:
+            self._scene_idxs[self._theme_idx] = scene_idx
+        if theme_changed or scene_changed:
+            self._play_current(now_ms)
+            self._schedule_save(now_ms)
 
     def _play_current(self, now_ms):
         name, _ = self._scenes[self._scene_idxs[self._theme_idx]]
