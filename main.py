@@ -27,6 +27,8 @@ def main():
         ColorTheme((0, 0, 255)),
     ]
 
+    fixture.clear()
+
     mesh = Mesh()
     controller = Controller(fixture, themes, network=mesh)
 
