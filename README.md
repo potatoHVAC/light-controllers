@@ -2,34 +2,21 @@
 
 ## Deploying to ESP32
 
-### 1. Flash MicroPython firmware (once per board)
+### Flash MicroPython firmware (once per board)
 
 Download the latest firmware from [micropython.org/download/ESP32_GENERIC](https://micropython.org/download/ESP32_GENERIC/), then:
 
+Replace `<port>` with your port (`/dev/ttyUSB0` on Linux, `/dev/tty.usbserial-*` on Mac, `COM3` on Windows).
+
 ```bash
-esptool --chip esp32 --port /dev/ttyUSB0 erase-flash
-esptool --chip esp32 --port /dev/ttyUSB0 write-flash -z 0x1000 ESP32_GENERIC-<version>.bin
+./flash_firmware.sh <port> <firmware.bin>
 ```
 
-### 2. Install mpremote
+### Upload files
 
 ```bash
 pipx install mpremote
-```
-
-### 3. Upload files
-
-```bash
-./deploy.sh /dev/ttyUSB0
-```
-
-Replace `/dev/ttyUSB0` with your port (`/dev/tty.usbserial-*` on Mac, `COM3` on Windows).
-
-**Finding your port:**
-```bash
-ls /dev/ttyUSB*
-# or
-dmesg | tail -10
+./deploy.sh <port>
 ```
 
 ---
