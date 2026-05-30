@@ -40,4 +40,7 @@ done
 unset 'CMD[${#CMD[@]}-1]'
 "${CMD[@]}"
 
+echo "Restarting device..."
+mpremote connect "$PORT" reset
+
 echo "Done."
