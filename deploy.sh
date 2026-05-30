@@ -1,4 +1,17 @@
 #!/bin/bash
+if [ "$1" = "-h" ]; then
+  echo "Usage: ./deploy.sh <port>"
+  echo ""
+  echo "Wipes the device, copies all firmware files, and restarts the ESP32."
+  echo ""
+  echo "Arguments:"
+  echo "  <port>  Serial port of the device (e.g. /dev/ttyUSB0)"
+  echo ""
+  echo "Flags:"
+  echo "  -h  Show this help message"
+  exit 0
+fi
+
 if [ -z "$1" ]; then
   echo "Usage: ./deploy.sh <port>  (e.g. ./deploy.sh /dev/ttyUSB0)"
   exit 1
