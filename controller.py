@@ -25,10 +25,10 @@ class Controller:
         self._scene_idxs = state['scenes']
         if len(self._scene_idxs) < len(themes):
             self._scene_idxs += [0] * (len(themes) - len(self._scene_idxs))
+        for i, theme in enumerate(themes):
+            limit = len(theme.scenes())
+            self._scene_idxs[i] = min(self._scene_idxs[i], limit - 1)
         self._load_scenes()
-        self._scene_idxs[self._theme_idx] = min(
-            self._scene_idxs[self._theme_idx], len(self._scenes) - 1
-        )
 
     def start(self, now_ms):
         """Play the initial scene. Call once after construction."""
