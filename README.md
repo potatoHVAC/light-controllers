@@ -7,8 +7,8 @@
 Download the latest firmware from [micropython.org/download/ESP32_GENERIC](https://micropython.org/download/ESP32_GENERIC/), then:
 
 ```bash
-esptool.py --chip esp32 --port /dev/ttyUSB0 erase_flash
-esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash -z 0x1000 ESP32_GENERIC-<version>.bin
+esptool --chip esp32 --port /dev/ttyUSB0 erase-flash
+esptool --chip esp32 --port /dev/ttyUSB0 write-flash -z 0x1000 ESP32_GENERIC-<version>.bin
 ```
 
 ### 2. Install mpremote
@@ -30,12 +30,6 @@ Replace `/dev/ttyUSB0` with your port (`/dev/tty.usbserial-*` on Mac, `COM3` on 
 ls /dev/ttyUSB*
 # or
 dmesg | tail -10
-```
-
-**Permission denied on Linux:** add yourself to the `dialout` group and reboot:
-```bash
-sudo usermod -aG dialout $USER
-sudo reboot
 ```
 
 ---
