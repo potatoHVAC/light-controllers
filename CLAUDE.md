@@ -28,8 +28,13 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Handshake/discovery:** Controllers announce themselves and build awareness of the network
 - **Solo request:** A controller can request to be the "solo" node; all others dim accordingly
-- **Master control:** A designated master node can broadcast pattern/state changes to all rigs
+- **Main control:** A designated main node can broadcast pattern/state changes to all rigs
 - **State sharing:** Controllers broadcast what they are currently doing so peers can react
+
+### Scale targets
+
+- **Unmanaged mesh (no main):** Design to support up to 200 controllers. Network decisions — traffic patterns, buffer sizing, jitter strategies — should hold up at this scale.
+- **Main-controlled:** Design to support up to 10,000 controllers when a main controller is present. The main architecture must account for this scale from the start; retrofitting it later is not acceptable.
 
 ## Pin Assignments (ESP32 DevKit V1 38-pin)
 
@@ -44,6 +49,9 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - Avoid GPIO 0, 2, 12 (boot-strapping pins)
 
 ## Collaboration
+
+- Review all code, comments, and documentation for cultural sensitivity before writing. Avoid terms with historical exclusionary connotations (e.g. main/follower instead of master/slave, allowlist/blocklist instead of whitelist/blacklist).
+
 
 - When the user proposes an approach that conflicts with best practices or has meaningful tradeoffs, push back with a clear argument before proceeding. Don't just implement what's asked if there's a good reason not to.
 
@@ -71,4 +79,8 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 ## Long-Term Roadmap (not immediate priority)
 
-- **Art-Net integration:** Allow a master node (or bridge device) to receive Art-Net DMX-over-IP from professional lighting consoles, translating to ESP-NOW commands across the rig network. Keep protocol boundaries clean so this layer can be added without restructuring the core network.
+- **Art-Net integration:** Allow a main node (or bridge device) to receive Art-Net DMX-over-IP from professional lighting consoles, translating to ESP-NOW commands across the rig network. Keep protocol boundaries clean so this layer can be added without restructuring the core network.
+
+- **Main controller:** A main always wins — its commands override any controller-initiated state. The main is open to requests from individual controllers but decides whether to relay them to the network. Controllers have tiers of authority; the main grants or ignores override requests based on tier. Individual controllers must never need to know about the hierarchy — they just receive and apply state. The `type` field in the mesh packet and the `apply_state` interface on the controller are the designed extension points for this.
+
+- **Bridge architecture:** At 10,000-unit scale the main speaks a higher-level protocol (Art-Net, OSC, or custom TCP/IP) to bridge nodes, each of which manages a zone of up to ~200 controllers over ESP-NOW. Controllers are unaware they are in a zone — same firmware, same mesh code throughout.
