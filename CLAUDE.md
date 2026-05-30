@@ -35,9 +35,10 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 | GPIO | Role | Status |
 |---|---|---|
-| GPIO16 | IRLZ34N gate (PWM, 12v strip control) | Active |
-| GPIO25 | Button 1 — next pattern + broadcast to network | Active |
-| GPIO26 | Button 2 — soloist signal | Reserved (future) |
+| GPIO22 | WS2812b strip 2 data | Active |
+| GPIO26 | WS2812b strip 1 data | Active |
+| GPIO27 | Button 2 — soloist signal | Reserved (future) |
+| GPIO33 | Button 1 — next scene + broadcast to network | Active |
 
 - Buttons wired active-low: GPIO → button → GND, internal pull-up enabled
 - Avoid GPIO 0, 2, 12 (boot-strapping pins)

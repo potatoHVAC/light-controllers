@@ -1,38 +1,42 @@
 import time
-from machine import Pin
-from light_rig import LightRig
-from network import Network
+from strip import Strip
+from fixture import Fixture
+from button import Button
+from themes import RandomTheme, ColorTheme
+from controller import Controller
 
-BTN_PIN = 25
-DEBOUNCE_MS = 50
-LOOP_MS = 10
+# LED Brain: 2 strips × 3 LEDs
+PRIMARY_PIN   = 26
+SECONDARY_PIN = 22
+NUM_LEDS      = 3
+BUTTON_PIN    = 33
 
 
 def main():
-    rig = LightRig(gpio=16)
-    net = Network()
-    btn = Pin(BTN_PIN, Pin.IN, Pin.PULL_UP)
+    strips = [
+        Strip("primary",   PRIMARY_PIN,   NUM_LEDS),
+        Strip("secondary", SECONDARY_PIN, NUM_LEDS),
+    ]
+    fixture = Fixture(strips)
+    button  = Button(BUTTON_PIN)
 
-    last_btn = 1
-    last_press_ms = 0
+    themes = [
+        RandomTheme(),
+        ColorTheme((255, 0, 0)),
+        ColorTheme((0, 0, 255)),
+    ]
+
+    controller = Controller(fixture, themes)
+    controller.start(time.ticks_ms())
 
     while True:
-        now = time.ticks_ms()
-
-        reading = btn.value()
-        if reading == 0 and last_btn == 1:
-            if time.ticks_diff(now, last_press_ms) > DEBOUNCE_MS:
-                rig.next_pattern()
-                net.broadcast_pattern(rig.pattern_index)
-                last_press_ms = now
-        last_btn = reading
-
-        msg = net.receive()
-        if msg and 'pattern' in msg:
-            rig.set_pattern(msg['pattern'])
-
-        rig.update(now)
-        time.sleep_ms(LOOP_MS)
+        now_ms = time.ticks_ms()
+        event  = button.update(now_ms)
+        if event == 'short':
+            controller.next_scene(now_ms)
+        elif event == 'long':
+            controller.next_theme(now_ms)
+        controller.update(now_ms)
 
 
 main()
