@@ -20,9 +20,21 @@ _UPDATE_READY = '/update_ready'
 _UPDATE_DIR   = '/update'
 
 
-def _copy_tree(src, dst):
-    """Recursively copy src directory into dst. dst='' means filesystem root."""
+def _copy_file(src, dst):
+    with open(src, 'rb') as sf, open(dst, 'wb') as df:
+        while True:
+            chunk = sf.read(512)
+            if not chunk:
+                break
+            df.write(chunk)
+
+
+def _copy_tree(src, dst, skip=None):
+    """Recursively copy src directory into dst. dst='' means filesystem root.
+    skip: filename to exclude (copied separately after everything else)."""
     for name in os.listdir(src):
+        if name == skip:
+            continue
         s = src + '/' + name
         d = ('/' + name) if not dst else (dst + '/' + name)
         try:
@@ -33,12 +45,7 @@ def _copy_tree(src, dst):
                 pass
             _copy_tree(s, d)
         except OSError:
-            with open(s, 'rb') as sf, open(d, 'wb') as df:
-                while True:
-                    chunk = sf.read(512)
-                    if not chunk:
-                        break
-                    df.write(chunk)
+            _copy_file(s, d)
 
 
 def _rm_tree(path):
@@ -55,14 +62,17 @@ def _rm_tree(path):
 # mid-swap is safe — /update/ always holds the complete verified copy.
 try:
     os.stat(_UPDATE_READY)
-    _copy_tree(_UPDATE_DIR, '')
+    # Copy everything except main.py first — if power cuts here, main.py
+    # survives intact and the swap retries cleanly next boot.
+    _copy_tree(_UPDATE_DIR, '', skip='main.py')
+    # Copy main.py last — smallest possible window for corruption.
+    _copy_file(_UPDATE_DIR + '/main.py', '/main.py')
     _rm_tree(_UPDATE_DIR)
-    os.remove(_UPDATE_READY)  # removed LAST — if power cuts before this, swap retries next boot
+    os.remove(_UPDATE_READY)  # removed LAST — if power cuts before this, swap retries
     import machine as _m
     _m.reset()
 except OSError:
-    # No marker — if /update/ exists it's an incomplete download (power cut
-    # mid-download). Clean it up so it doesn't consume flash space.
+    # No marker — clean up any incomplete download.
     try:
         _rm_tree(_UPDATE_DIR)
     except OSError:

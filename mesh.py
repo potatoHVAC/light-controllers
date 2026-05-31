@@ -30,14 +30,20 @@ class Mesh:
     def __init__(self):
         sta = _net.WLAN(_net.STA_IF)
         sta.active(True)
+        try:
+            sta.config(channel=1)
+        except Exception:
+            pass
         self._en = espnow.ESPNow()
         self._en.active(True)
         self._en.add_peer(BROADCAST)
         self._mac = ubinascii.hexlify(sta.config('mac')).decode()
         self._seq = 0
         self._last_seqs = {}
-        self._last_heartbeat_ms = 0
         self._pending = {}  # nonce -> {'deadline': ms, 'count': n}
+        # Set last heartbeat far in the past so the first tick() call fires
+        # a heartbeat immediately rather than waiting a full HEARTBEAT_MS.
+        self._last_heartbeat_ms = time.ticks_add(time.ticks_ms(), -self.HEARTBEAT_MS)
 
     def announce(self):
         """Broadcast a heartbeat_request after sync is complete to announce presence."""

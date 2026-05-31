@@ -76,88 +76,98 @@ def run(np=None):
     in main.py, so a power cut during download leaves the running
     firmware completely untouched.
 
+    WiFi is always shut down before returning so ESP-NOW initialises
+    cleanly regardless of how this function exits.
+
     Returns True if a verified update is staged, False otherwise.
     """
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
-    sta.connect(OTA_SSID, OTA_PASSWORD)
-
-    # Use sta.status() for fast failure when the hotspot is not in range.
-    # The ESP32 reports 201 (NO_AP_FOUND) as soon as it determines the SSID
-    # isn't visible — typically under 500ms, much faster than a full scan.
-    # Status codes: 201=no AP, 202=wrong password, 203=assoc fail, 204=timeout
-    start = time.ticks_ms()
-    while not sta.isconnected():
-        if time.ticks_diff(time.ticks_ms(), start) > WIFI_TIMEOUT_MS:
-            sta.active(False)
-            return False
-        if sta.status() in (201, 202, 203, 204):
-            sta.active(False)
-            return False
-
-    server_ip = _discover_server()
-    if server_ip is None:
-        return False
-
-    base = 'http://{}:{}'.format(server_ip, OTA_PORT)
+    result = False
 
     try:
-        resp = urequests.get(base + '/manifest.json')
-        manifest = resp.json()
-        resp.close()
-    except Exception:
-        return False
-
-    files = manifest.get('files', [])
-
-    # Clean up any previous incomplete download and start fresh
-    try:
-        _rm_tree(UPDATE_DIR)
-    except Exception:
-        pass
-    os.mkdir(UPDATE_DIR)
-
-    for i, f in enumerate(files):
-        if np:
-            _set_progress(np, _PROGRESS_CYCLE[i % 4])
-
-        path = f['path']
-        update_path = UPDATE_DIR + '/' + path
+        # Scan first so we only attempt a connection when the hotspot is
+        # visible. Faster to fail than risking a premature NO_AP_FOUND status.
+        target = OTA_SSID.encode()
         try:
-            resp = urequests.get(base + '/files/' + path)
-            _ensure_dir(update_path)
-            with open(update_path, 'wb') as fh:
-                while True:
-                    chunk = resp.raw.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    fh.write(chunk)
+            visible = any(n[0] == target for n in sta.scan())
+        except Exception:
+            visible = False
+
+        if not visible:
+            return False
+
+        sta.connect(OTA_SSID, OTA_PASSWORD)
+        start = time.ticks_ms()
+        while not sta.isconnected():
+            if time.ticks_diff(time.ticks_ms(), start) > WIFI_TIMEOUT_MS:
+                return False
+
+        server_ip = _discover_server()
+        if server_ip is None:
+            return False
+
+        base = 'http://{}:{}'.format(server_ip, OTA_PORT)
+
+        try:
+            resp = urequests.get(base + '/manifest.json')
+            manifest = resp.json()
             resp.close()
         except Exception:
-            _rm_tree(UPDATE_DIR)
             return False
 
-    # Verify every file size matches the manifest before marking ready
-    for f in files:
+        files = manifest.get('files', [])
+
+        # Clean up any previous incomplete download and start fresh
         try:
-            if os.stat(UPDATE_DIR + '/' + f['path'])[6] != f['size']:
+            _rm_tree(UPDATE_DIR)
+        except Exception:
+            pass
+        os.mkdir(UPDATE_DIR)
+
+        for i, f in enumerate(files):
+            if np:
+                _set_progress(np, _PROGRESS_CYCLE[i % 4])
+
+            path = f['path']
+            update_path = UPDATE_DIR + '/' + path
+            try:
+                resp = urequests.get(base + '/files/' + path)
+                _ensure_dir(update_path)
+                with open(update_path, 'wb') as fh:
+                    while True:
+                        chunk = resp.raw.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                resp.close()
+            except Exception:
                 _rm_tree(UPDATE_DIR)
                 return False
-        except Exception:
-            _rm_tree(UPDATE_DIR)
-            return False
 
-    # All files verified — write marker so next boot applies the swap
-    with open(UPDATE_READY, 'w') as mf:
-        mf.write('1')
+        for f in files:
+            try:
+                if os.stat(UPDATE_DIR + '/' + f['path'])[6] != f['size']:
+                    _rm_tree(UPDATE_DIR)
+                    return False
+            except Exception:
+                _rm_tree(UPDATE_DIR)
+                return False
 
-    if np:
-        np.fill(_GREEN)
-        np.write()
-        end = time.ticks_add(time.ticks_ms(), 200)
-        while time.ticks_diff(time.ticks_ms(), end) < 0:
-            pass
-        np.fill(_BLACK)
-        np.write()
+        with open(UPDATE_READY, 'w') as mf:
+            mf.write('1')
 
-    return True
+        if np:
+            np.fill(_GREEN)
+            np.write()
+            end = time.ticks_add(time.ticks_ms(), 200)
+            while time.ticks_diff(time.ticks_ms(), end) < 0:
+                pass
+            np.fill(_BLACK)
+            np.write()
+
+        result = True
+        return result
+
+    finally:
+        sta.active(False)
