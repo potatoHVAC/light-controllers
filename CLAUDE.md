@@ -70,6 +70,8 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **All light actions must be interruptable at any time.** Patterns must never block — no `sleep()` inside pattern logic. Patterns calculate their output from elapsed time and return immediately. The main loop applies the value, checks inputs, and checks the network on every tick.
 
+- **Patterns must only write to strips via the public API** — `strip[i]`, `strip.fill()`, `strip.draw_pulse()`. Never access `strip._np` directly. The strip maintains a separate unscaled buffer so network dim scaling is applied once at show() time without compounding across ticks. Bypassing the public API breaks this.
+
 ## Code
 
 - **Language:** MicroPython
@@ -78,10 +80,6 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **ESP-NOW:** `espnow` module (built into MicroPython ESP32 port)
 - HSV color math written in-house (no FastLED equivalent exists for MicroPython)
 - Controllers use a unified `LightRig` abstraction so network logic is decoupled from light type
-
-## Upcoming Work
-
-- **Brightness as a packet field:** Brightness is a network-level decision, not an individual controller setting. The mesh packet should carry a brightness value that all controllers apply uniformly. Not a per-device override.
 
 ## Long-Term Roadmap (not immediate priority)
 
@@ -98,3 +96,9 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **OTA versioning:** Add a version field to the OTA manifest. Controllers compare against a locally stored version and skip the download if already up to date.
 
 - **Error mode display:** Use the addressable strips themselves as the error indicator. On network failure, boot failure, or other fault conditions, display a distinct error pattern on the strips rather than a separate status LED.
+
+- **Web/phone show control interface:** Expand the OTA server into a full show control panel accessible from a browser or phone. Allows a director to change themes, scenes, and dim levels across the rig without touching any controller. Extends the existing server infrastructure rather than replacing it.
+
+- **Per-member fixture configs:** Each band member has a custom config (strip lengths, pattern tuning) sized to their instrument. Stored in the server database alongside member metadata (name, instrument, role, grouping tags like "drummers" or "horns"). Used for quick controller swap-outs and for group commands — e.g. dim all horns, solo all drummers. Each member config includes a default scene (theme + scene name) that replaces the solid color fallback for unknown themes. A mesh packet type `default` should send every controller to its own stored default scene — useful for resetting the rig to a known per-member state between songs.
+
+- **Controller identity and assignment:** Controllers need a persistent identity (short ID derived from MAC) that can be assigned to a band member in the database. Enables the server to push the right fixture config when a controller joins, and to target commands at specific members or groups rather than broadcasting to all.
