@@ -55,10 +55,11 @@ class Mesh:
             'nonce': random.randint(0, 0xFFFFFF),
         })
 
-    def send_change(self, theme, scene, dim=1.0):
-        """Broadcast a scene change initiated by this controller."""
+    def send_change(self, theme, scene, dim=1.0, color=None):
+        """Broadcast a theme+scene change. scene=None tells each receiver to
+        pick a random scene from the theme independently."""
         self._seq += 1
-        self._broadcast('change', theme, scene, dim)
+        self._broadcast('change', theme, scene, dim, color=color)
 
     def send_solo(self, active, dim=0.2):
         """Broadcast solo state. active=True dims all others; False restores full brightness."""
@@ -82,12 +83,12 @@ class Mesh:
             'dim': dim,
         })
 
-    def tick(self, theme, scene, dim, now_ms):
+    def tick(self, theme, scene, dim, now_ms, color=None):
         """Send heartbeat if due, fire or suppress pending responses, return any valid incoming message."""
         if time.ticks_diff(now_ms, self._last_heartbeat_ms) >= self.HEARTBEAT_MS:
             self._last_heartbeat_ms = now_ms
             self._seq += 1
-            self._broadcast('heartbeat', theme, scene, dim)
+            self._broadcast('heartbeat', theme, scene, dim, color=color)
 
         for nonce in list(self._pending):
             entry = self._pending[nonce]
@@ -95,7 +96,7 @@ class Mesh:
                 del self._pending[nonce]
             elif time.ticks_diff(now_ms, entry['deadline']) >= 0:
                 self._seq += 1
-                self._broadcast('heartbeat', theme, scene, dim, nonce=nonce)
+                self._broadcast('heartbeat', theme, scene, dim, nonce=nonce, color=color)
                 self._last_heartbeat_ms = now_ms
                 del self._pending[nonce]
 
@@ -134,7 +135,7 @@ class Mesh:
 
         return data
 
-    def _broadcast(self, msg_type, theme, scene, dim=1.0, nonce=None):
+    def _broadcast(self, msg_type, theme, scene, dim=1.0, nonce=None, color=None):
         packet = {
             'type': msg_type,
             'sender': self._mac,
@@ -143,6 +144,8 @@ class Mesh:
             'scene': scene,
             'dim': dim,
         }
+        if color is not None:
+            packet['color'] = list(color)
         if nonce is not None:
             packet['nonce'] = nonce
         self._send(packet)

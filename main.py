@@ -110,8 +110,8 @@ def main():
 
     themes = [
         RandomTheme(),
-        ColorTheme((255, 0, 0)),
-        ColorTheme((0, 0, 255)),
+        ColorTheme((255, 0, 0), 'red'),
+        ColorTheme((0, 0, 255), 'blue'),
     ]
 
     fixture.clear()
