@@ -45,7 +45,8 @@ def main():
         Strip("secondary", SECONDARY_PIN, NUM_LEDS),
     ]
     fixture = Fixture(strips)
-    button  = Button(BUTTON_PIN)
+    button        = Button(BUTTON_PIN)
+    soloist_button = Button(BUTTON_SOLOIST_PIN)
 
     themes = [
         RandomTheme(),
@@ -57,28 +58,20 @@ def main():
 
     mesh = Mesh()
     controller = Controller(fixture, themes, network=mesh)
-
-    # Stay dark until synced from network or manually started via button press.
-    # Never fall back to saved state automatically — unexpected state mid-show
-    # is worse than a delay.
-    while True:
-        now_ms = time.ticks_ms()
-        if button.update(now_ms):
-            break
-        sync = mesh.check_sync()
-        if sync:
-            controller.apply_state(sync[0], sync[1], now_ms)
-            break
-
-    controller.start(time.ticks_ms())
+    controller.start(time.ticks_ms(), button=button)
 
     while True:
         now_ms = time.ticks_ms()
-        event  = button.update(now_ms)
+        event = button.update(now_ms)
         if event == 'short':
             controller.next_scene(now_ms)
         elif event == 'long':
             controller.next_theme(now_ms)
+        solo_event = soloist_button.update(now_ms)
+        if solo_event == 'short':
+            controller.solo()
+        elif solo_event == 'long':
+            controller.release_solo()
         controller.update(now_ms)
 
 
