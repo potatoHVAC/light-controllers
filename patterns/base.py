@@ -1,5 +1,11 @@
 class Pattern:
-    """Operates on a single strip. Never calls show()."""
+    """Operates on a single strip. Never calls show().
+
+    Always write pixel values using the strip's public API — strip[i], fill(),
+    and draw_pulse(). Never access strip._np directly. The strip maintains a
+    separate unscaled buffer so dim scaling is applied cleanly at show() time
+    without compounding across ticks. Bypassing the public API breaks this.
+    """
 
     def reset(self, now_ms):
         """Called when switching to this pattern. Reset all internal state."""

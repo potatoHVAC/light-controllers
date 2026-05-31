@@ -13,6 +13,9 @@ class Strip:
         self.num_leds = num_leds
         self._np = NeoPixel(Pin(pin), num_leds)
         self._dim = 1.0
+        # Unscaled pattern buffer. show() reads from here so dim scaling never
+        # compounds between ticks when a pattern has a timing gate.
+        self._buf = [(0, 0, 0)] * num_leds
 
     @property
     def dim(self):
@@ -23,21 +26,24 @@ class Strip:
         self._dim = max(0.0, min(1.0, factor))
 
     def __setitem__(self, index, color):
+        self._buf[index] = color
         self._np[index] = color
 
     def __getitem__(self, index):
-        return self._np[index]
+        return self._buf[index]
 
     def fill(self, color):
         """Set every LED to the same color without pushing to hardware."""
         for i in range(self.num_leds):
+            self._buf[i] = color
             self._np[i] = color
 
     def show(self):
-        """Push the current pixel buffer to the physical strip, applying dim scaling."""
+        """Push the current pixel buffer to hardware, applying dim scaling.
+        Reads from the unscaled _buf so scaling never compounds across ticks."""
         if self._dim < 1.0:
             for i in range(self.num_leds):
-                r, g, b = self._np[i]
+                r, g, b = self._buf[i]
                 self._np[i] = (int(r * self._dim), int(g * self._dim), int(b * self._dim))
         self._np.write()
 
@@ -52,4 +58,6 @@ class Strip:
         for i in range(PULSE_LEN):
             idx = head_pos - (direction * i)
             if 0 <= idx < self.num_leds:
-                self._np[idx] = color_max(self._np[idx], scale(color, exp_falloff(i)))
+                new_color = color_max(self._buf[idx], scale(color, exp_falloff(i)))
+                self._buf[idx] = new_color
+                self._np[idx] = new_color
