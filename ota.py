@@ -48,14 +48,6 @@ def _ensure_dir(path):
             pass
 
 
-def _hotspot_visible(sta):
-    target = OTA_SSID.encode()
-    try:
-        return any(n[0] == target for n in sta.scan())
-    except Exception:
-        return False
-
-
 def _discover_server():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -88,15 +80,19 @@ def run(np=None):
     """
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
-
-    if not _hotspot_visible(sta):
-        sta.active(False)
-        return False
-
     sta.connect(OTA_SSID, OTA_PASSWORD)
+
+    # Use sta.status() for fast failure when the hotspot is not in range.
+    # The ESP32 reports 201 (NO_AP_FOUND) as soon as it determines the SSID
+    # isn't visible — typically under 500ms, much faster than a full scan.
+    # Status codes: 201=no AP, 202=wrong password, 203=assoc fail, 204=timeout
     start = time.ticks_ms()
     while not sta.isconnected():
         if time.ticks_diff(time.ticks_ms(), start) > WIFI_TIMEOUT_MS:
+            sta.active(False)
+            return False
+        if sta.status() in (201, 202, 203, 204):
+            sta.active(False)
             return False
 
     server_ip = _discover_server()
