@@ -42,7 +42,7 @@ EOF
 echo "Copying files..."
 mpremote connect "$PORT" \
   cp main.py :main.py + \
-  cp color.py button.py strip.py fixture.py storage.py controller.py themes.py mesh.py :
+  cp color.py button.py strip.py fixture.py storage.py controller.py themes.py mesh.py ota.py :
 
 mpremote connect "$PORT" exec "import os; os.mkdir('patterns')"
 

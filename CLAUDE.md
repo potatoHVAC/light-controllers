@@ -81,7 +81,6 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 ## Upcoming Work
 
-- **OTA updates:** Push firmware to all controllers over WiFi rather than physical deployment. Significant time saver at scale.
 - **Brightness as a packet field:** Brightness is a network-level decision, not an individual controller setting. The mesh packet should carry a brightness value that all controllers apply uniformly. Not a per-device override.
 
 ## Long-Term Roadmap (not immediate priority)
@@ -95,5 +94,7 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **Web/phone configuration interface:** ESP32 hosts a WiFi access point for show-day adjustments without redeployment. Must be secured so audience members cannot interfere — authentication required, ideally with role-based access so a band member cannot accidentally trigger main-level overrides.
 
 - **Beat-sync patterns:** Patterns that accept BPM as a parameter and pulse on the beat. BPM set manually or broadcast from the main controller.
+
+- **OTA versioning:** Add a version field to the OTA manifest. Controllers compare against a locally stored version and skip the download if already up to date.
 
 - **Error mode display:** Use the addressable strips themselves as the error indicator. On network failure, boot failure, or other fault conditions, display a distinct error pattern on the strips rather than a separate status LED.

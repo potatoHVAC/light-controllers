@@ -21,6 +21,51 @@ pipx install mpremote
 
 ---
 
+## OTA Updates
+
+Once controllers are deployed you can push firmware updates over WiFi without plugging anything in.
+
+### Requirements
+
+- Docker
+- A laptop with a WiFi adapter
+
+### First-time setup
+
+Find your WiFi interface name:
+
+```bash
+ip link show
+```
+
+Look for a interface name starting with `wl` (e.g. `wlp3s0`). Then start the hotspot:
+
+```bash
+./hotspot.sh <interface>
+```
+
+This creates a WiFi network named `LIGHTRIG_OTA`. You only need to do this once per session — the hotspot stays up until you disconnect it or reboot.
+
+### Pushing an update
+
+Start the OTA server:
+
+```bash
+./server/run.sh
+```
+
+Open [http://localhost:8080](http://localhost:8080) to see the update log.
+
+To update a controller:
+
+1. Hold the button while powering it on
+2. Keep holding for **3 seconds**
+3. The controller connects to the hotspot, downloads all files, and restarts automatically
+
+Update multiple controllers by holding the button on each one during power-on. They update independently and can all be done at the same time.
+
+---
+
 ## Wiring Diagram
 
 ### 12v Non-Addressable LED Strip (SMD2835)
