@@ -6,14 +6,13 @@ class Button:
     """Debounced button with short press and long press detection.
     Wired active-low: GPIO -> button -> GND, internal pull-up enabled."""
 
-    DEBOUNCE_MS = 30
-    LONG_PRESS_MS = 500
-
-    def __init__(self, pin_num):
+    def __init__(self, pin_num, debounce_ms=30, long_press_ms=500):
         self._pin = Pin(pin_num, Pin.IN, Pin.PULL_UP)
+        self._debounce_ms = debounce_ms
+        self._long_press_ms = long_press_ms
         self._last_raw = 1
         self._state = 1
-        self._debounce_ms = 0
+        self._debounce_start = 0
         self._press_start = 0
         self._is_pressed = False
         self._long_fired = False
@@ -22,10 +21,10 @@ class Button:
         """Call every loop tick. Returns 'short', 'long', or None."""
         raw = self._pin.value()
         if raw != self._last_raw:
-            self._debounce_ms = now_ms
+            self._debounce_start = now_ms
         self._last_raw = raw
 
-        if time.ticks_diff(now_ms, self._debounce_ms) < self.DEBOUNCE_MS:
+        if time.ticks_diff(now_ms, self._debounce_start) < self._debounce_ms:
             return None
 
         event = None
@@ -42,7 +41,7 @@ class Button:
             self._is_pressed = False
 
         if self._is_pressed and not self._long_fired:
-            if time.ticks_diff(now_ms, self._press_start) >= self.LONG_PRESS_MS:
+            if time.ticks_diff(now_ms, self._press_start) >= self._long_press_ms:
                 self._long_fired = True
                 event = 'long'
 

@@ -10,7 +10,10 @@ OTA_PORT            = 8080
 UDP_PORT            = 5000
 CHUNK_SIZE          = 512
 WIFI_TIMEOUT_MS     = 5000
-DISCOVER_TIMEOUT_MS = 2000
+DISCOVER_TIMEOUT_MS = 1000
+
+UPDATE_DIR   = '/update'
+UPDATE_READY = '/update_ready'
 
 _YELLOW = (128, 128, 0)
 _GREEN  = (0, 255, 0)
@@ -26,7 +29,17 @@ def _set_progress(np, leds_on):
     np.write()
 
 
+def _rm_tree(path):
+    try:
+        for f in os.listdir(path):
+            _rm_tree(path + '/' + f)
+        os.rmdir(path)
+    except OSError:
+        os.remove(path)
+
+
 def _ensure_dir(path):
+    """Create parent directories for the given path if they don't exist."""
     parts = path.split('/')
     if len(parts) > 1:
         try:
@@ -36,7 +49,6 @@ def _ensure_dir(path):
 
 
 def _hotspot_visible(sta):
-    """Return True if OTA_SSID is visible in a WiFi scan."""
     target = OTA_SSID.encode()
     try:
         return any(n[0] == target for n in sta.scan())
@@ -45,7 +57,6 @@ def _hotspot_visible(sta):
 
 
 def _discover_server():
-    """Listen for UDP broadcast from OTA server. Returns IP or None."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setblocking(False)
@@ -66,8 +77,15 @@ def _discover_server():
 
 
 def run(np=None):
-    """Check for OTA server and update if found.
-    Returns True if update completed successfully, False otherwise."""
+    """Check for OTA server and download update if found.
+
+    Files are downloaded into /update/ and verified before writing
+    /update_ready. The actual swap to root happens on the next boot
+    in main.py, so a power cut during download leaves the running
+    firmware completely untouched.
+
+    Returns True if a verified update is staged, False otherwise.
+    """
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
 
@@ -96,15 +114,23 @@ def run(np=None):
 
     files = manifest.get('files', [])
 
+    # Clean up any previous incomplete download and start fresh
+    try:
+        _rm_tree(UPDATE_DIR)
+    except Exception:
+        pass
+    os.mkdir(UPDATE_DIR)
+
     for i, f in enumerate(files):
         if np:
             _set_progress(np, _PROGRESS_CYCLE[i % 4])
 
         path = f['path']
+        update_path = UPDATE_DIR + '/' + path
         try:
             resp = urequests.get(base + '/files/' + path)
-            _ensure_dir(path)
-            with open(path, 'wb') as fh:
+            _ensure_dir(update_path)
+            with open(update_path, 'wb') as fh:
                 while True:
                     chunk = resp.raw.read(CHUNK_SIZE)
                     if not chunk:
@@ -112,7 +138,22 @@ def run(np=None):
                     fh.write(chunk)
             resp.close()
         except Exception:
+            _rm_tree(UPDATE_DIR)
             return False
+
+    # Verify every file size matches the manifest before marking ready
+    for f in files:
+        try:
+            if os.stat(UPDATE_DIR + '/' + f['path'])[6] != f['size']:
+                _rm_tree(UPDATE_DIR)
+                return False
+        except Exception:
+            _rm_tree(UPDATE_DIR)
+            return False
+
+    # All files verified — write marker so next boot applies the swap
+    with open(UPDATE_READY, 'w') as mf:
+        mf.write('1')
 
     if np:
         np.fill(_GREEN)

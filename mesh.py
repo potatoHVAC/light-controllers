@@ -38,6 +38,9 @@ class Mesh:
         self._last_seqs = {}
         self._last_heartbeat_ms = 0
         self._pending = {}  # nonce -> {'deadline': ms, 'count': n}
+
+    def announce(self):
+        """Broadcast a heartbeat_request after sync is complete to announce presence."""
         self._seq += 1
         self._send({
             'type': 'heartbeat_request',
@@ -46,33 +49,39 @@ class Mesh:
             'nonce': random.randint(0, 0xFFFFFF),
         })
 
-    def check_sync(self):
-        """Non-blocking check for a single incoming state message.
-        Returns (theme, scene) if a heartbeat or change is waiting, else None."""
-        _, msg = self._en.recv(0)
-        if not msg:
-            return None
-        try:
-            data = json.loads(msg)
-        except Exception:
-            return None
-        if data.get('sender') == self._mac:
-            return None
-        if data.get('type') in ('heartbeat', 'change'):
-            return data.get('theme', 0), data.get('scene', 0)
-        return None
-
-    def send_change(self, theme, scene):
+    def send_change(self, theme, scene, dim=1.0):
         """Broadcast a scene change initiated by this controller."""
         self._seq += 1
-        self._broadcast('change', theme, scene)
+        self._broadcast('change', theme, scene, dim)
 
-    def tick(self, theme, scene, now_ms):
+    def send_solo(self, active, dim=0.2):
+        """Broadcast solo state. active=True dims all others; False restores full brightness."""
+        self._seq += 1
+        packet = {
+            'type': 'solo',
+            'sender': self._mac,
+            'seq': self._seq,
+            'active': active,
+            'dim': dim if active else 1.0,
+        }
+        self._send(packet)
+
+    def send_dim(self, dim):
+        """Broadcast a dim-only command without changing theme or scene."""
+        self._seq += 1
+        self._send({
+            'type': 'dim',
+            'sender': self._mac,
+            'seq': self._seq,
+            'dim': dim,
+        })
+
+    def tick(self, theme, scene, dim, now_ms):
         """Send heartbeat if due, fire or suppress pending responses, return any valid incoming message."""
         if time.ticks_diff(now_ms, self._last_heartbeat_ms) >= self.HEARTBEAT_MS:
             self._last_heartbeat_ms = now_ms
             self._seq += 1
-            self._broadcast('heartbeat', theme, scene)
+            self._broadcast('heartbeat', theme, scene, dim)
 
         for nonce in list(self._pending):
             entry = self._pending[nonce]
@@ -80,7 +89,7 @@ class Mesh:
                 del self._pending[nonce]
             elif time.ticks_diff(now_ms, entry['deadline']) >= 0:
                 self._seq += 1
-                self._broadcast('heartbeat', theme, scene, nonce=nonce)
+                self._broadcast('heartbeat', theme, scene, dim, nonce=nonce)
                 self._last_heartbeat_ms = now_ms
                 del self._pending[nonce]
 
@@ -119,13 +128,14 @@ class Mesh:
 
         return data
 
-    def _broadcast(self, msg_type, theme, scene, nonce=None):
+    def _broadcast(self, msg_type, theme, scene, dim=1.0, nonce=None):
         packet = {
             'type': msg_type,
             'sender': self._mac,
             'seq': self._seq,
             'theme': theme,
             'scene': scene,
+            'dim': dim,
         }
         if nonce is not None:
             packet['nonce'] = nonce
