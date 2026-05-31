@@ -4,8 +4,8 @@ import urequests
 import socket
 import os
 
-OTA_SSID            = 'LIGHTRIG_OTA'
-OTA_PASSWORD        = 'lightrig2024'
+from secrets import OTA_SSID, OTA_PASSWORD
+
 OTA_PORT            = 8080
 UDP_PORT            = 5000
 CHUNK_SIZE          = 512

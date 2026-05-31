@@ -27,10 +27,27 @@ from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-UDP_PORT = 5000
-
-PORT = 8080
+UDP_PORT     = 5000
+PORT         = 8080
 PROJECT_ROOT = Path(os.environ['FIRMWARE_DIR']) if 'FIRMWARE_DIR' in os.environ else Path(__file__).parent.parent
+
+
+def _load_env():
+    env = {}
+    try:
+        for line in (PROJECT_ROOT / '.env').read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                env[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    return env
+
+
+_env = _load_env()
+OTA_SSID     = _env.get('OTA_SSID', 'LIGHTRIG_OTA')
+OTA_PASSWORD = _env.get('OTA_PASSWORD', '')
 
 OTA_FILES = [
     'main.py',
@@ -99,7 +116,7 @@ HTML = """\
     <h2>How to update a controller</h2>
     <ol>
       <li>Ensure this computer is sharing a WiFi hotspot:<br>
-          SSID: <code>LIGHTRIG_OTA</code> &nbsp; Password: <code>lightrig2024</code></li>
+          SSID: <code>OTA_SSID_VALUE</code> &nbsp; Password: <code>OTA_PASSWORD_VALUE</code></li>
       <li>Hold the button on the controller while powering it on</li>
       <li>Keep holding for <strong>3 seconds</strong></li>
       <li>The controller connects, downloads all files, and restarts automatically</li>
@@ -160,7 +177,9 @@ def _build_html(manifest):
     return (HTML
             .replace('PORT', str(PORT))
             .replace('FILE_COUNT', str(len(manifest['files'])))
-            .replace('FILE_LIST', file_list))
+            .replace('FILE_LIST', file_list)
+            .replace('OTA_SSID_VALUE', OTA_SSID)
+            .replace('OTA_PASSWORD_VALUE', OTA_PASSWORD))
 
 
 class OTAHandler(BaseHTTPRequestHandler):

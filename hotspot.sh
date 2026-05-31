@@ -15,9 +15,15 @@ if [ "$1" = "-h" ]; then
   exit 0
 fi
 
+if [ ! -f .env ]; then
+  echo "Error: .env file not found. Copy .env.example to .env and set your credentials."
+  exit 1
+fi
+source .env
+
 IFACE="${1:-wlan0}"
-SSID="LIGHTRIG_OTA"
-PASSWORD="lightrig2024"
+SSID="$OTA_SSID"
+PASSWORD="$OTA_PASSWORD"
 
 echo "Starting hotspot on $IFACE..."
 echo "SSID:     $SSID"
