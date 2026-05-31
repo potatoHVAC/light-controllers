@@ -12,6 +12,15 @@ class Strip:
         self.name = name
         self.num_leds = num_leds
         self._np = NeoPixel(Pin(pin), num_leds)
+        self._dim = 1.0
+
+    @property
+    def dim(self):
+        return self._dim
+
+    @dim.setter
+    def dim(self, factor):
+        self._dim = max(0.0, min(1.0, factor))
 
     def __setitem__(self, index, color):
         self._np[index] = color
@@ -25,7 +34,11 @@ class Strip:
             self._np[i] = color
 
     def show(self):
-        """Push the current pixel buffer to the physical strip."""
+        """Push the current pixel buffer to the physical strip, applying dim scaling."""
+        if self._dim < 1.0:
+            for i in range(self.num_leds):
+                r, g, b = self._np[i]
+                self._np[i] = (int(r * self._dim), int(g * self._dim), int(b * self._dim))
         self._np.write()
 
     def clear(self):

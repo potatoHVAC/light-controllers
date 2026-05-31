@@ -41,6 +41,11 @@ class Fixture:
         for strip in self._strips:
             strip.show()
 
+    def set_dim(self, factor):
+        """Set brightness ceiling on all strips. 1.0 = full, 0.0 = off."""
+        for strip in self._strips:
+            strip.dim = factor
+
     def clear(self):
         """Turn off all strips immediately."""
         for strip in self._strips:
