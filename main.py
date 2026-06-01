@@ -15,7 +15,6 @@ NUM_LEDS           = 3
 BUTTON_PIN         = 33
 BUTTON_SOLOIST_PIN = 27
 
-_OTA_FLAG     = '_ota_done'
 _UPDATE_READY = '/update_ready'
 _UPDATE_DIR   = '/update'
 
@@ -62,10 +61,7 @@ def _rm_tree(path):
 # mid-swap is safe — /update/ always holds the complete verified copy.
 try:
     os.stat(_UPDATE_READY)
-    # Copy everything except main.py first — if power cuts here, main.py
-    # survives intact and the swap retries cleanly next boot.
     _copy_tree(_UPDATE_DIR, '', skip='main.py')
-    # Copy main.py last — smallest possible window for corruption.
     _copy_file(_UPDATE_DIR + '/main.py', '/main.py')
     _rm_tree(_UPDATE_DIR)
     os.remove(_UPDATE_READY)  # removed LAST — if power cuts before this, swap retries
@@ -78,25 +74,46 @@ except OSError:
     except OSError:
         pass
 
-# Skip the OTA check on the boot immediately after a successful update
-# to avoid re-downloading the firmware we just applied.
-_post_ota = False
-try:
-    os.remove(_OTA_FLAG)
-    _post_ota = True
-except OSError:
-    pass
 
-if not _post_ota:
+def _run_ota():
+    """Download and stage an OTA update, then reboot to apply it."""
     import neopixel
     import machine
-    _np = neopixel.NeoPixel(Pin(PRIMARY_PIN), NUM_LEDS)
-    from ota import run as _ota_run
-    if _ota_run(np=_np):
-        with open(_OTA_FLAG, 'w') as _f:
-            _f.write('1')
+    np = neopixel.NeoPixel(Pin(PRIMARY_PIN), NUM_LEDS)
+    from ota import run as ota_run
+    if ota_run(np=np):
         machine.reset()
-    del _np
+    del np
+
+
+def _execute_bridge_command(cmd, ctrl, now_ms):
+    """Execute a command received from the laptop bridge."""
+    cmd_type = cmd.get('type')
+    if cmd_type == 'change':
+        color = cmd.get('color')
+        ctrl._apply_network_state(
+            cmd.get('theme'), cmd.get('scene'), now_ms,
+            color=tuple(color) if color else None,
+        )
+        if ctrl._network:
+            ctrl._network.send_change(
+                cmd.get('theme'), cmd.get('scene'),
+                ctrl._network_dim(), color=tuple(color) if color else None,
+            )
+    elif cmd_type == 'dim':
+        dim = float(cmd.get('dim', 1.0))
+        ctrl.set_dim(dim)
+        if ctrl._network:
+            ctrl._network.send_dim(dim)
+    elif cmd_type == 'solo':
+        if cmd.get('active', False):
+            ctrl.solo()
+        else:
+            ctrl.release_solo()
+    elif cmd_type == 'ota_update':
+        if ctrl._network:
+            ctrl._network.send_ota_update()
+        _run_ota()
 
 
 def main():
@@ -120,19 +137,47 @@ def main():
     controller = Controller(fixture, themes, network=mesh)
     controller.start(time.ticks_ms(), button=button)
 
+    # Connect bridge if elected leader
+    _bridge = None
+    if controller.is_leader:
+        from bridge import Bridge
+        _bridge = Bridge()
+        if not _bridge.connect():
+            _bridge = None
+
     while True:
         now_ms = time.ticks_ms()
+
         event = button.update(now_ms)
         if event == 'short':
             controller.next_scene(now_ms)
         elif event == 'long':
             controller.next_theme(now_ms)
+
         solo_event = soloist_button.update(now_ms)
         if solo_event == 'short':
             controller.solo()
         elif solo_event == 'long':
             controller.release_solo()
-        controller.update(now_ms)
+
+        controller.update(now_ms, bridge=_bridge)
+
+        # Connect bridge if newly elected during runtime
+        if controller.is_leader and _bridge is None:
+            from bridge import Bridge
+            _bridge = Bridge()
+            if not _bridge.connect():
+                _bridge = None
+
+        # Tick bridge: forward mesh messages and execute incoming commands
+        if _bridge:
+            cmd = _bridge.tick()
+            if cmd:
+                _execute_bridge_command(cmd, controller, now_ms)
+
+        # Handle OTA update requested via mesh (non-leader controllers)
+        if controller.ota_requested:
+            _run_ota()
 
 
 main()

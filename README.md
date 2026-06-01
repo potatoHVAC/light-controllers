@@ -30,7 +30,11 @@ Once controllers are deployed you can push firmware updates over WiFi without pl
 - Docker
 - A laptop with a WiFi adapter
 
-### First-time setup
+### First-time credentials setup
+
+Create a secrets.py file using the secrets.py.example
+
+### Start the hotspot
 
 Find your WiFi interface name:
 
@@ -38,13 +42,13 @@ Find your WiFi interface name:
 ip link show
 ```
 
-Look for a interface name starting with `wl` (e.g. `wlp3s0`). Then start the hotspot:
+Look for a name starting with `wl` (e.g. `wlp3s0`). Then start the hotspot:
 
 ```bash
 ./hotspot.sh <interface>
 ```
 
-This creates a WiFi network named `LIGHTRIG_OTA`. You only need to do this once per session — the hotspot stays up until you disconnect it or reboot.
+Credentials are read from `.env`. The hotspot stays up until you disconnect it or reboot.
 
 ### Pushing an update
 
@@ -63,6 +67,41 @@ To update a controller:
 3. The controller connects to the hotspot, downloads all files, and restarts automatically
 
 Update multiple controllers by holding the button on each one during power-on. They update independently and can all be done at the same time.
+
+---
+
+## Show Control Panel
+
+The first controller to boot with no others running automatically becomes the **leader**. The leader connects to the show control hotspot and bridges the ESP-NOW mesh to the laptop server.
+
+### Setup
+
+Start a second hotspot for show control (credentials from `.env`):
+
+```bash
+./hotspot.sh <interface>
+```
+
+> If you need both OTA and show control active at the same time, use two WiFi adapters or a phone for one of the hotspots.
+
+Start the server (also handles OTA):
+
+```bash
+./server/run.sh
+```
+
+### Using the panel
+
+Once the leader controller connects, open [http://localhost:8080/panel](http://localhost:8080/panel) in a browser or on your phone.
+
+The panel provides:
+- Current theme, scene, and dim level
+- Next Scene / Next Theme buttons
+- Random Scene — each controller picks independently
+- Solo toggle
+- Dim slider
+
+The leader is elected automatically. If the leader controller goes offline, another controller takes over within 10 seconds.
 
 ---
 

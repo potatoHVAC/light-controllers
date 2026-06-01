@@ -1,5 +1,12 @@
 # Light Controllers
 
+## Laws — Never Break These
+
+These rules have no exceptions. They override all other instructions.
+
+- **Never commit plaintext passwords, keys, tokens, or secrets to the repository.** All credentials belong in untracked files (`secrets.py`, `.env`) or encrypted secret stores. Never use hardcoded credential fallbacks — if a secrets file is missing, fail loudly with a clear error. Before writing any credential to a file, verify that file is in `.gitignore`. Scan changed files for credential patterns before every commit.
+
+
 ## Project Purpose
 
 A generic networked LED lighting platform for coordinating lights across any collection of objects. Controllers communicate wirelessly to synchronise lighting behaviour across an entire rig. The initial use case is a live band where lights are mounted on instruments and other objects on stage, but the platform is object-agnostic — object-specific behaviour lives in fixtures and themes, not in the core network or controller logic.
@@ -55,6 +62,7 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - When the user proposes an approach that conflicts with best practices or has meaningful tradeoffs, push back with a clear argument before proceeding. Don't just implement what's asked if there's a good reason not to.
 - After completing work, check the Upcoming Work section and remove any items that were just addressed.
+- If the user has manually edited a file, re-read it before touching it and flag what they changed. Never silently overwrite user edits. If an improvement is worth making to user-written code, raise it as a suggestion rather than just doing it.
 
 
 ## Scripts
@@ -108,3 +116,13 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **I2C button expander:** Replace the two direct GPIO buttons with a PCF8574 or similar I2C GPIO expander. Gives 8 inputs on 2 shared pins, detects simultaneous presses for combo gestures, unaffected by WiFi ADC noise. Current two-button layout (GPIO33 scene/theme, GPIO27 soloist) should map directly into the expander with room to add independent mode, leader declaration, and other show controls as dedicated buttons. Button reading is isolated to the Button class and main.py — the hardware swap should be contained there.
 
 - **Independent mode:** Dual button hold toggles a controller in and out of independent mode. In independent mode the controller ignores incoming mesh commands and does not broadcast its own changes — it runs its own patterns locally without affecting or being affected by the group. On exit, the controller re-syncs to the current mesh state. The control panel should also be able to pull a controller out of independent mode remotely.
+
+- **Control panel debug page:** A `/debug` page on the server that displays a live log of mesh packets forwarded by the bridge — sender MAC, message type, theme/scene/dim, sequence number, and timestamp. Failed bridge commands should appear as warnings in this log. The server already buffers log entries; just add packet forwarding to the log and build the debug UI on top.
+
+- **Monitoring and metrics:** Track per-controller health over time — last seen timestamp, packet counts, command success/failure rates, leader election history. Exportable for post-show review. Groundwork for alerting when a controller goes silent mid-show.
+
+- **OTA versioning and passive updates:** Add a version field to the OTA manifest and store the current version on each controller. Controllers would passively check for a newer version on boot and self-update without needing a push command. The push deploy button stays as an override. Versioning also prevents unnecessary downloads when nothing has changed.
+
+- **Rename LIGHTRIG_OTA network:** The shared hotspot SSID is still named `LIGHTRIG_OTA` but now serves both OTA updates and show control. Rename to something more generic (e.g. `LIGHTRIG`) once we decide on a final name.
+
+- **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
