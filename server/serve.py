@@ -29,11 +29,13 @@ MAX_RETRIES = 3      # command retry attempts before logging a warning
 PROJECT_ROOT = Path(os.environ['FIRMWARE_DIR']) if 'FIRMWARE_DIR' in os.environ else Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 from config import DISCOVERY_PORT as UDP_PORT, DISCOVERY_MSG, BRIDGE_PORT, HTTP_PORT, THEMES
-from secrets import OTA_SSID, OTA_PASSWORD
+from secrets import OTA_SSID, OTA_PASSWORD, BRIDGE_SECRET
+import hmac as _hmac_mod
+import hashlib as _hashlib
 
 OTA_FILES = [
     'boot.py', 'main.py', 'controller.py', 'mesh.py', 'bridge.py',
-    'ota.py', 'color.py', 'button.py', 'strip.py',
+    'auth.py', 'ota.py', 'color.py', 'button.py', 'strip.py',
     'fixture.py', 'storage.py', 'themes.py', 'secrets.py', 'config.py',
     'patterns/__init__.py', 'patterns/base.py', 'patterns/bounce_pulse.py',
     'patterns/breathe.py', 'patterns/breathe_center.py', 'patterns/center_meet.py',
@@ -112,8 +114,16 @@ def _bridge_receiver():
                     _mesh_state['dim'] = msg['dim']
 
 
+def _sign_payload(payload_bytes):
+    """HMAC-SHA256 sign payload_bytes using BRIDGE_SECRET."""
+    return _hmac_mod.new(
+        BRIDGE_SECRET.encode(), payload_bytes, _hashlib.sha256
+    ).hexdigest()
+
+
 def send_command(command):
-    """Send a sequenced command to the bridge. Retries up to MAX_RETRIES times.
+    """Send a signed, sequenced command to the bridge. Retries up to MAX_RETRIES times.
+    Commands are sent as <json>|<hmac_hex> so the controller can verify before executing.
     Logs a warning if all retries fail. Returns True if ACKed."""
     global _bridge_seq
     if not _bridge_ip:
@@ -125,7 +135,9 @@ def send_command(command):
         seq = _bridge_seq
 
     command['seq'] = seq
-    data = json.dumps(command).encode()
+    payload = json.dumps(command, separators=(',', ':')).encode()
+    sig = _sign_payload(payload)
+    data = payload + b'|' + sig.encode()
 
     for attempt in range(MAX_RETRIES):
         try:

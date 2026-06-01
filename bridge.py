@@ -3,8 +3,9 @@ import socket
 import json
 import network as _net
 
-from secrets import OTA_SSID, OTA_PASSWORD
+from secrets import OTA_SSID, OTA_PASSWORD, BRIDGE_SECRET
 from config import BRIDGE_PORT, DISCOVERY_PORT, DISCOVERY_MSG
+from auth import verify as _verify_sig
 
 WIFI_TIMEOUT_MS     = 10000
 DISCOVER_TIMEOUT_MS = 3000
@@ -94,8 +95,17 @@ class Bridge:
         except OSError:
             return None
 
+        # Commands arrive as <json_bytes>|<hmac_hex> — verify before parsing.
+        sep = data.rfind(b'|')
+        if sep < 0:
+            return None
+        payload = data[:sep]
+        sig_hex = data[sep + 1:].decode()
+        if not _verify_sig(BRIDGE_SECRET, payload, sig_hex):
+            return None  # Reject unsigned or tampered commands
+
         try:
-            msg = json.loads(data)
+            msg = json.loads(payload)
         except Exception:
             return None
 
