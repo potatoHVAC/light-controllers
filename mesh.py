@@ -21,6 +21,9 @@ class Mesh:
     responded with that nonce. Once SUPPRESS_THRESHOLD responses are seen the
     pending response is cancelled — the newcomer already has enough data. This
     keeps the response storm bounded regardless of network size.
+
+    The leader flag is included in heartbeats when this controller is the leader.
+    Followers use this to detect leader loss and trigger re-election.
     """
 
     HEARTBEAT_MS       = 5000
@@ -30,10 +33,6 @@ class Mesh:
     def __init__(self):
         sta = _net.WLAN(_net.STA_IF)
         sta.active(True)
-        try:
-            sta.config(channel=1)
-        except Exception:
-            pass
         self._en = espnow.ESPNow()
         self._en.active(True)
         self._en.add_peer(BROADCAST)
@@ -41,9 +40,38 @@ class Mesh:
         self._seq = 0
         self._last_seqs = {}
         self._pending = {}  # nonce -> {'deadline': ms, 'count': n}
-        # Set last heartbeat far in the past so the first tick() call fires
-        # a heartbeat immediately rather than waiting a full HEARTBEAT_MS.
+        self._is_leader = False
+        self._leader_mac = None
+        self._last_leader_hb_ms = None
+        # Set last heartbeat far in the past so the first tick() fires immediately.
         self._last_heartbeat_ms = time.ticks_add(time.ticks_ms(), -self.HEARTBEAT_MS)
+
+    @property
+    def mac(self):
+        return self._mac
+
+    @property
+    def is_leader(self):
+        return self._is_leader
+
+    @is_leader.setter
+    def is_leader(self, value):
+        self._is_leader = value
+
+    @property
+    def leader_mac(self):
+        return self._leader_mac
+
+    def note_leader_heartbeat(self, sender_mac, now_ms):
+        """Record that a leader heartbeat was received from sender_mac."""
+        self._leader_mac = sender_mac
+        self._last_leader_hb_ms = now_ms
+
+    def leader_heartbeat_age(self, now_ms):
+        """Milliseconds since last leader heartbeat, or None if never seen."""
+        if self._last_leader_hb_ms is None:
+            return None
+        return time.ticks_diff(now_ms, self._last_leader_hb_ms)
 
     def announce(self):
         """Broadcast a heartbeat_request after sync is complete to announce presence."""
@@ -72,6 +100,15 @@ class Mesh:
             'dim': dim if active else 1.0,
         }
         self._send(packet)
+
+    def send_ota_update(self):
+        """Broadcast an OTA update request to all controllers in the mesh."""
+        self._seq += 1
+        self._send({
+            'type': 'ota_update',
+            'sender': self._mac,
+            'seq': self._seq,
+        })
 
     def send_dim(self, dim):
         """Broadcast a dim-only command without changing theme or scene."""
@@ -131,6 +168,8 @@ class Mesh:
             nonce = data.get('nonce')
             if nonce and nonce in self._pending:
                 self._pending[nonce]['count'] += 1
+            if data.get('leader'):
+                self.note_leader_heartbeat(sender, now_ms)
             return data
 
         return data
@@ -144,6 +183,8 @@ class Mesh:
             'scene': scene,
             'dim': dim,
         }
+        if self._is_leader:
+            packet['leader'] = True
         if color is not None:
             packet['color'] = list(color)
         if nonce is not None:

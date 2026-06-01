@@ -5,9 +5,9 @@ import socket
 import os
 
 from secrets import OTA_SSID, OTA_PASSWORD
+from config import DISCOVERY_PORT, DISCOVERY_MSG, HTTP_PORT as OTA_PORT
 
-OTA_PORT            = 8080
-UDP_PORT            = 5000
+UDP_PORT            = DISCOVERY_PORT
 CHUNK_SIZE          = 512
 WIFI_TIMEOUT_MS     = 5000
 DISCOVER_TIMEOUT_MS = 1000
@@ -57,7 +57,7 @@ def _discover_server():
         while time.ticks_diff(time.ticks_ms(), start) < DISCOVER_TIMEOUT_MS:
             try:
                 data, addr = sock.recvfrom(64)
-                if data == b'LIGHTRIG_OTA':
+                if data == DISCOVERY_MSG:
                     sock.close()
                     return addr[0]
             except OSError:

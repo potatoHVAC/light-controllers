@@ -2,11 +2,12 @@
 if [ "$1" = "-h" ]; then
   echo "Usage: ./hotspot.sh [interface]"
   echo ""
-  echo "Starts a WiFi hotspot for OTA controller updates."
-  echo "Credentials are read from .env (OTA_SSID / OTA_PASSWORD)."
+  echo "Starts a WiFi hotspot for controller updates and show control."
+  echo "Credentials are read from secrets.py in the project root."
+  echo "Not needed when using a phone or tablet as the hotspot."
   echo ""
   echo "Arguments:"
-  echo "  [interface]  WiFi interface to use (default: wlan0)"
+  echo "  [interface]  WiFi interface to use (Linux only, default: wlan0)"
   echo "               Find yours with: ip link show"
   echo ""
   echo "Flags:"
@@ -14,19 +15,30 @@ if [ "$1" = "-h" ]; then
   exit 0
 fi
 
-if [ ! -f .env ]; then
-  echo "Error: .env file not found. Copy .env.example to .env and set your credentials."
+if [ ! -f secrets.py ]; then
+  echo "Error: secrets.py not found. Copy secrets.py.example to secrets.py and set your credentials."
   exit 1
 fi
-source .env
 
+SSID=$(python3 -c "from secrets import OTA_SSID; print(OTA_SSID)")
+PASSWORD=$(python3 -c "from secrets import OTA_PASSWORD; print(OTA_PASSWORD)")
+
+OS=$(uname)
+
+if [ "$OS" = "Darwin" ]; then
+  echo "Starting hotspot on macOS..."
+  echo "SSID:     $SSID"
+  echo ""
+  echo "Note: macOS does not support command-line hotspot creation."
+  echo "Enable Internet Sharing manually in System Settings → General → Sharing,"
+  echo "then set the network name to: $SSID"
+  exit 0
+fi
+
+# Linux (nmcli)
 IFACE="${1:-wlan0}"
-SSID="$OTA_SSID"
-PASSWORD="$OTA_PASSWORD"
-
 echo "Starting hotspot on $IFACE..."
 echo "SSID:     $SSID"
-echo "Password: $PASSWORD"
 echo ""
 
-nmcli device wifi hotspot ifname "$IFACE" ssid "$SSID" password "$PASSWORD"
+nmcli device wifi hotspot ifname "$IFACE" ssid "$SSID" password "$PASSWORD" band bg channel 1

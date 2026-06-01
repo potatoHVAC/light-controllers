@@ -3,10 +3,11 @@ import socket
 import json
 import network as _net
 
-from secrets import PANEL_SSID, PANEL_PASSWORD
+from secrets import OTA_SSID, OTA_PASSWORD
+from config import BRIDGE_PORT, DISCOVERY_PORT, DISCOVERY_MSG
 
-BRIDGE_PORT     = 5001
-WIFI_TIMEOUT_MS = 10000
+WIFI_TIMEOUT_MS     = 10000
+DISCOVER_TIMEOUT_MS = 3000
 
 
 class Bridge:
@@ -28,18 +29,20 @@ class Bridge:
         """Connect to the show control hotspot. Returns True on success."""
         sta = _net.WLAN(_net.STA_IF)
         sta.active(True)
-        try:
-            sta.config(channel=1)
-        except Exception:
-            pass
-        sta.connect(PANEL_SSID, PANEL_PASSWORD)
+        sta.connect(OTA_SSID, OTA_PASSWORD)
 
         start = time.ticks_ms()
         while not sta.isconnected():
             if time.ticks_diff(time.ticks_ms(), start) > WIFI_TIMEOUT_MS:
                 return False
 
-        self._laptop_ip = sta.ifconfig()[2]  # gateway = laptop
+        # Discover the laptop's IP via its UDP broadcast — the gateway is the
+        # phone hotspot, not the laptop, so we can't use ifconfig()[2].
+        laptop_ip = self._discover_laptop()
+        if laptop_ip is None:
+            return False
+
+        self._laptop_ip = laptop_ip
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.bind(('', BRIDGE_PORT))
         self._sock.setblocking(False)
@@ -47,6 +50,26 @@ class Bridge:
         # Announce so the laptop learns our IP immediately
         self._raw_send({'type': 'bridge_connected'})
         return True
+
+    def _discover_laptop(self):
+        """Listen for the server's OTA discovery broadcast to find its IP."""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setblocking(False)
+            sock.bind(('', DISCOVERY_PORT))
+            start = time.ticks_ms()
+            while time.ticks_diff(time.ticks_ms(), start) < DISCOVER_TIMEOUT_MS:
+                try:
+                    data, addr = sock.recvfrom(64)
+                    if data == DISCOVERY_MSG:
+                        sock.close()
+                        return addr[0]
+                except OSError:
+                    pass
+            sock.close()
+        except Exception:
+            pass
+        return None
 
     def forward(self, packet):
         """Forward a received ESP-NOW packet to the laptop (fire-and-forget)."""

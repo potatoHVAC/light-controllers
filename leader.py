@@ -2,7 +2,7 @@ import network as _net
 import socket
 import json
 
-from secrets import PANEL_SSID, PANEL_PASSWORD
+from secrets import OTA_SSID, OTA_PASSWORD
 
 PANEL_PORT = 80
 
@@ -83,8 +83,8 @@ def start_ap():
     ap = _net.WLAN(_net.AP_IF)
     ap.active(True)
     ap.config(
-        essid=PANEL_SSID,
-        password=PANEL_PASSWORD,
+        essid=OTA_SSID,
+        password=OTA_PASSWORD,
         channel=1,
         authmode=3,  # WPA2
     )
