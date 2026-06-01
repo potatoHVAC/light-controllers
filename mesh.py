@@ -43,6 +43,7 @@ class Mesh:
         self._is_leader = False
         self._leader_mac = None
         self._last_leader_hb_ms = None
+        self._pending_retry = None  # (type, ..., fire_at_ms) for critical retransmit
         # Set last heartbeat far in the past so the first tick() fires immediately.
         self._last_heartbeat_ms = time.ticks_add(time.ticks_ms(), -self.HEARTBEAT_MS)
 
@@ -85,12 +86,16 @@ class Mesh:
 
     def send_change(self, theme, scene, dim=1.0, color=None):
         """Broadcast a theme+scene change. scene=None tells each receiver to
-        pick a random scene from the theme independently."""
+        pick a random scene from the theme independently.
+        Sent twice with a short gap to improve delivery reliability."""
         self._seq += 1
         self._broadcast('change', theme, scene, dim, color=color)
+        self._pending_retry = ('change', theme, scene, dim, color,
+                               time.ticks_add(time.ticks_ms(), 200))
 
     def send_solo(self, active, dim=0.2):
-        """Broadcast solo state. active=True dims all others; False restores full brightness."""
+        """Broadcast solo state. active=True dims all others; False restores full brightness.
+        Sent twice with a short gap to improve delivery reliability."""
         self._seq += 1
         packet = {
             'type': 'solo',
@@ -100,6 +105,8 @@ class Mesh:
             'dim': dim if active else 1.0,
         }
         self._send(packet)
+        self._pending_retry = ('solo', active, dim, None, None,
+                               time.ticks_add(time.ticks_ms(), 200))
 
     def send_ota_update(self):
         """Broadcast an OTA update request to all controllers in the mesh."""
@@ -126,6 +133,22 @@ class Mesh:
             self._last_heartbeat_ms = now_ms
             self._seq += 1
             self._broadcast('heartbeat', theme, scene, dim, color=color)
+
+        if self._pending_retry:
+            msg_type = self._pending_retry[0]
+            fire_at  = self._pending_retry[5]
+            if time.ticks_diff(now_ms, fire_at) >= 0:
+                if msg_type == 'change':
+                    _, t, s, d, c, _ = self._pending_retry
+                    self._seq += 1
+                    self._broadcast('change', t, s, d, color=c)
+                elif msg_type == 'solo':
+                    _, active, d, _, _, _ = self._pending_retry
+                    self._seq += 1
+                    self._send({'type': 'solo', 'sender': self._mac,
+                                'seq': self._seq, 'active': active,
+                                'dim': d if active else 1.0})
+                self._pending_retry = None
 
         for nonce in list(self._pending):
             entry = self._pending[nonce]
