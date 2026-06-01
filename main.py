@@ -137,13 +137,16 @@ def main():
     controller = Controller(fixture, themes, network=mesh)
     controller.start(time.ticks_ms(), button=button)
 
-    # Connect bridge if elected leader
+    # Connect bridge if elected leader. If WiFi connection fails, step down
+    # so another controller can win the re-election and try instead.
     _bridge = None
     if controller.is_leader:
         from bridge import Bridge
         _bridge = Bridge()
         if not _bridge.connect():
             _bridge = None
+            controller._is_leader = False
+            controller._network.is_leader = False
 
     while True:
         now_ms = time.ticks_ms()
@@ -162,12 +165,14 @@ def main():
 
         controller.update(now_ms, bridge=_bridge)
 
-        # Connect bridge if newly elected during runtime
+        # Connect bridge if newly elected during runtime. Step down on failure.
         if controller.is_leader and _bridge is None:
             from bridge import Bridge
             _bridge = Bridge()
             if not _bridge.connect():
                 _bridge = None
+                controller._is_leader = False
+                controller._network.is_leader = False
 
         # Tick bridge: forward mesh messages and execute incoming commands
         if _bridge:
