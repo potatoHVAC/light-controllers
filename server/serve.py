@@ -364,7 +364,9 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/manifest.json':
             _log(f'OTA: controller {self.client_address[0]} connected')
             manifest = self._build_manifest()
-            self._respond(200, 'application/json', json.dumps(manifest).encode())
+            payload = json.dumps(manifest, separators=(',', ':')).encode()
+            sig = _sign_payload(payload)
+            self._respond(200, 'application/octet-stream', payload + b'|' + sig.encode())
 
         elif self.path.startswith('/files/'):
             file_path = self.path[7:]

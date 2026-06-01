@@ -4,8 +4,9 @@ import urequests
 import socket
 import os
 
-from secrets import OTA_SSID, OTA_PASSWORD
+from secrets import OTA_SSID, OTA_PASSWORD, BRIDGE_SECRET
 from config import DISCOVERY_PORT, DISCOVERY_MSG, HTTP_PORT as OTA_PORT
+from auth import verify as _verify_sig
 
 UDP_PORT            = DISCOVERY_PORT
 CHUNK_SIZE          = 512
@@ -111,8 +112,19 @@ def run(np=None):
 
         try:
             resp = urequests.get(base + '/manifest.json')
-            manifest = resp.json()
+            raw = resp.content
             resp.close()
+        except Exception:
+            return False
+
+        # Manifest arrives as <json_bytes>|<hmac_hex> — verify before parsing.
+        sep = raw.rfind(b'|')
+        if sep < 0 or not _verify_sig(BRIDGE_SECRET, raw[:sep], raw[sep+1:].decode()):
+            return False
+
+        try:
+            import ujson
+            manifest = ujson.loads(raw[:sep])
         except Exception:
             return False
 
