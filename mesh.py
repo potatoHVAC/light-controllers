@@ -38,8 +38,9 @@ class Mesh:
         self._en.add_peer(BROADCAST)
         self._mac = ubinascii.hexlify(sta.config('mac')).decode()
         self._seq = 0
-        self._last_seqs = {}
-        self._pending = {}  # nonce -> {'deadline': ms, 'count': n}
+        self._last_seqs = {}      # sender_mac -> last accepted seq
+        self._last_seen = {}      # sender_mac -> now_ms of last packet
+        self._pending = {}        # nonce -> {'deadline': ms, 'count': n}
         self._is_leader = False
         self._leader_mac = None
         self._last_leader_hb_ms = None
@@ -177,6 +178,16 @@ class Mesh:
             return None
 
         self._last_seqs[sender] = seq
+        self._last_seen[sender] = now_ms
+
+        # Prune senders not heard from in 5× heartbeat interval to prevent
+        # unbounded memory growth over long sessions or with many controllers.
+        prune_ms = self.HEARTBEAT_MS * 5
+        for mac in list(self._last_seen):
+            if time.ticks_diff(now_ms, self._last_seen[mac]) > prune_ms:
+                self._last_seqs.pop(mac, None)
+                del self._last_seen[mac]
+
         msg_type = data.get('type')
 
         if msg_type == 'heartbeat_request':
