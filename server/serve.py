@@ -47,11 +47,13 @@ OTA_FILES = [
 
 # ── Bridge state ──────────────────────────────────────────────────────────────
 
-_bridge_ip   = None
-_bridge_seq  = 0
-_ack_queue   = queue.Queue()
-_bridge_lock = threading.Lock()
-_bridge_sock = None
+_bridge_ip          = None
+_bridge_seq         = 0
+_ack_queue          = queue.Queue()
+_bridge_lock        = threading.Lock()
+_bridge_sock        = None
+_last_bridge_packet = 0.0   # time.time() of last received bridge packet
+BRIDGE_TIMEOUT_S    = 15    # mark disconnected after 3× heartbeat interval
 
 _mesh_state = {
     'theme':      None,
@@ -73,7 +75,7 @@ def _init_bridge():
 def _bridge_receiver():
     """Background thread: reads UDP packets from the bridge, routes ACKs and
     forwarded mesh packets."""
-    global _bridge_ip
+    global _bridge_ip, _last_bridge_packet
     while True:
         try:
             data, addr = _bridge_sock.recvfrom(512)
@@ -82,6 +84,7 @@ def _bridge_receiver():
             continue
 
         _bridge_ip = addr[0]
+        _last_bridge_packet = time.time()
 
         if 'ack' in msg:
             _ack_queue.put(msg['ack'])
@@ -366,6 +369,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/status':
             with _bridge_lock:
                 state = dict(_mesh_state)
+            state['connected'] = (
+                _last_bridge_packet > 0 and
+                time.time() - _last_bridge_packet < BRIDGE_TIMEOUT_S
+            )
             self._respond(200, 'application/json', json.dumps(state).encode())
 
         elif self.path == '/manifest.json':
