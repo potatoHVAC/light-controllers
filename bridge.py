@@ -6,9 +6,11 @@ import network as _net
 from secrets import OTA_SSID, OTA_PASSWORD, BRIDGE_SECRET
 from config import BRIDGE_PORT, DISCOVERY_PORT, DISCOVERY_MSG
 from auth import verify as _verify_sig
+from mesh import scan_channel as _scan_channel
 
-WIFI_TIMEOUT_MS     = 10000
-DISCOVER_TIMEOUT_MS = 5000
+WIFI_TIMEOUT_MS      = 10000
+DISCOVER_TIMEOUT_MS  = 5000
+SERVER_TIMEOUT_MS    = 15000  # reset if no server heartbeat for 15 seconds
 
 # Connection state machine states
 _IDLE        = 0
@@ -30,25 +32,42 @@ class Bridge:
         Any → IDLE         : timeout or error, caller schedules retry
     """
 
-    def __init__(self):
-        self._state       = _IDLE
-        self._sock        = None
-        self._laptop_ip   = None
-        self._last_seq    = -1
-        self._state_start = 0
-        self._sta         = None
-        self._disc_sock   = None
+    def __init__(self, mesh):
+        self._mesh               = mesh
+        self._state              = _IDLE
+        self._sock               = None
+        self._laptop_ip          = None
+        self._last_seq           = -1
+        self._state_start        = 0
+        self._sta                = None
+        self._disc_sock          = None
+        self._last_server_hb_ms  = None  # last received server heartbeat
+        self._hint_channel       = None  # known channel from a hotspot_found alert
+
+    def set_channel_hint(self, ch):
+        """Supply a known hotspot channel so the next attempt skips the scan."""
+        self._hint_channel = ch
 
     def is_connected(self):
         return self._state == _CONNECTED
 
-    def start_connect(self):
-        """Kick off a connection attempt. Returns immediately."""
+    def start_connect(self, channel=None):
+        """Begin a connection attempt. Scans for the hotspot (blocking ~2s)
+        unless channel is supplied (e.g. from a hotspot_found alert), announces
+        the channel to the mesh so followers migrate first, then associates.
+        Returns False if no hotspot is found (caller backs off)."""
+        ch = channel if channel is not None else _scan_channel(OTA_SSID)
+        if ch is None:
+            return False
+        # Tell the mesh to move BEFORE we associate and get dragged off-channel.
+        self._mesh.announce_channel(ch)
+        self._mesh.apply_channel(ch)
         self._sta = _net.WLAN(_net.STA_IF)
         self._sta.active(True)
         self._sta.connect(OTA_SSID, OTA_PASSWORD)
         self._state       = _CONNECTING
         self._state_start = time.ticks_ms()
+        return True
 
     def tick_connect(self, now_ms):
         """Advance the connection state machine one step. Returns True when
@@ -59,7 +78,10 @@ class Bridge:
             return True
 
         if self._state == _IDLE:
-            self.start_connect()
+            hint = self._hint_channel
+            self._hint_channel = None
+            if self.start_connect(hint) is False:
+                return False
             return None
 
         if self._state == _CONNECTING:
@@ -115,6 +137,12 @@ class Bridge:
 
     def _fail(self):
         self._close_disc_sock()
+        if self._sock:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
         if self._sta:
             try:
                 self._sta.disconnect()
@@ -179,7 +207,24 @@ class Bridge:
             return None
 
         self._last_seq = seq
+
+        # Heartbeat from server — update timestamp, don't execute as a command
+        if msg.get('type') == 'server_heartbeat':
+            self._last_server_hb_ms = time.ticks_ms()
+            return None
+
         return msg
+
+    def check_server_alive(self, now_ms):
+        """Return False and reset to IDLE if server heartbeats have gone silent."""
+        if self._state != _CONNECTED:
+            return True
+        if self._last_server_hb_ms is None:
+            return True
+        if time.ticks_diff(now_ms, self._last_server_hb_ms) > SERVER_TIMEOUT_MS:
+            self._fail()
+            return False
+        return True
 
     def _raw_send(self, data):
         if not self._sock or not self._laptop_ip:

@@ -6,7 +6,7 @@ These rules have no exceptions. They override all other instructions.
 
 - **Never commit plaintext passwords, keys, tokens, or secrets to the repository.** All credentials belong in untracked files (`secrets.py`, `.env`) or encrypted secret stores. Never use hardcoded credential fallbacks — if a secrets file is missing, fail loudly with a clear error. Before writing any credential to a file, verify that file is in `.gitignore`. Scan changed files for credential patterns before every commit.
 
-- **No blocking during normal operation.** The main loop must never block — no `sleep()`, no polling loops, no waiting on I/O. All long-running operations (WiFi connection, discovery, OTA) must be implemented as non-blocking state machines that advance one step per tick and return immediately. Blocking is only permitted during one-shot startup operations before the main loop begins (e.g., the A/B swap, the initial boot sequence).
+- **No blocking during normal operation.** The main loop must never block — no `sleep()`, no polling loops, no waiting on I/O. All long-running operations (WiFi connection, discovery, OTA) must be implemented as non-blocking state machines that advance one step per tick and return immediately. Blocking is only permitted during one-shot startup operations before the main loop begins (e.g., the A/B swap, the initial boot sequence), and for a single WiFi scan (`sta.scan()`, ~2s — no async API exists) at the discrete moment a controller connects to or recovers a hotspot: only the leader scans on connect, and only a freshly-booted or orphaned controller scans on recovery. Steady-state controllers never scan.
 
 
 ## Project Purpose
@@ -130,4 +130,11 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
 
 - **Bug List:** 
-* 
+* add a lights off command before starting an update.
+
+- **Change Request:**
+* 1 second fade back to full bright when turning off solo mode
+* server button for solo mode is only solo mode off that sends the release command
+* change download complete visual to 3 green lights flashing at 300 ms intervals 3 times. 
+* server log and mesh log on a debug(-name) page along with the push firmware button.
+* display count of known controlers in the mesh. 

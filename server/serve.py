@@ -61,6 +61,7 @@ _mesh_state = {
     'dim':        1.0,
     'solo_active': False,
     'leader':     False,
+    'autonomous': False,
     'connected':  False,
 }
 
@@ -111,10 +112,13 @@ def _bridge_receiver():
                     _mesh_state['dim'] = msg['dim']
                 if msg.get('leader'):
                     _mesh_state['leader'] = True
+                    _mesh_state['autonomous'] = bool(msg.get('auto'))
             elif msg_type == 'solo':
                 _mesh_state['solo_active'] = msg.get('active', False)
                 if 'dim' in msg:
                     _mesh_state['dim'] = msg['dim']
+            elif msg_type == 'hotspot_found':
+                _log(f"[{msg.get('sender','?')[:8]}] hotspot alert on channel {msg.get('ch')}", 'info')
             elif msg_type == 'log':
                 sender = msg.get('sender', 'unknown')[:8]
                 lvl  = msg.get('lvl', 'info')
@@ -277,6 +281,7 @@ input[type=range]{width:100%;margin-top:6px}
   <div class="status">Theme: <span id="theme">—</span> &nbsp;|&nbsp;
     Scene: <span id="scene">—</span> &nbsp;|&nbsp; Dim: <span id="dim">—</span></div>
   <div id="bridge" class="bridge off">Bridge: not connected</div>
+  <div id="auto" class="bridge off" style="display:none">Mesh running autonomously</div>
 </div>
 <div class="card">
   <div class="row">
@@ -324,6 +329,8 @@ function load(){
     var b=document.getElementById('bridge');
     b.textContent=d.connected?'Bridge: connected':'Bridge: not connected';
     b.className='bridge '+(d.connected?'on':'off');
+    var a=document.getElementById('auto');
+    a.style.display=d.autonomous?'block':'none';
   }).catch(()=>{});
   fetch('/log').then(r=>r.json()).then(entries=>{
     var el=document.getElementById('log');
@@ -491,14 +498,31 @@ def _udp_broadcaster():
         time.sleep(1)
 
 
+def _bridge_heartbeat():
+    """Send a signed keepalive heartbeat to the bridge every 5 seconds.
+    The bridge uses this to detect when the server goes offline."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    while True:
+        time.sleep(5)
+        if not _bridge_ip:
+            continue
+        try:
+            payload = b'{"type":"server_heartbeat"}'
+            sig = _sign_payload(payload)
+            sock.sendto(payload + b'|' + sig.encode(), (_bridge_ip, BRIDGE_PORT))
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':
     _init_bridge()
     manifest_files = len([f for f in OTA_FILES if (PROJECT_ROOT / f).exists()])
     _log(f'Serving {manifest_files} OTA files on port {HTTP_PORT}')
     _log(f'Hotspot SSID: {OTA_SSID}')
     _log(f'Control panel: http://localhost:{HTTP_PORT}/panel')
-    threading.Thread(target=_udp_broadcaster,  daemon=True).start()
+    threading.Thread(target=_udp_broadcaster,   daemon=True).start()
     threading.Thread(target=_bridge_receiver,   daemon=True).start()
+    threading.Thread(target=_bridge_heartbeat,  daemon=True).start()
     try:
         HTTPServer(('', HTTP_PORT), Handler).serve_forever()
     except KeyboardInterrupt:

@@ -5,7 +5,24 @@ import network as _net
 import ubinascii
 import random
 
+from config import DEFAULT_CHANNEL, SET_CHANNEL_REPEATS
+
 BROADCAST = b'\xff\xff\xff\xff\xff\xff'
+
+
+def scan_channel(ssid):
+    """Blocking WiFi scan (~2s) for ssid. Returns its channel, or None if not
+    found. Permitted only at a connect/recovery moment, never in steady state."""
+    try:
+        sta = _net.WLAN(_net.STA_IF)
+        sta.active(True)
+        target = ssid.encode() if isinstance(ssid, str) else ssid
+        for ap in sta.scan():
+            if ap[0] == target:
+                return ap[2]  # channel field
+    except Exception:
+        pass
+    return None
 
 
 class Mesh:
@@ -31,12 +48,20 @@ class Mesh:
     SUPPRESS_THRESHOLD = 3
 
     def __init__(self):
-        sta = _net.WLAN(_net.STA_IF)
-        sta.active(True)
+        self._sta = _net.WLAN(_net.STA_IF)
+        self._sta.active(True)
+        # Every controller boots on the same known channel so the mesh is
+        # coherent before any hotspot announcement migrates it elsewhere.
+        self._channel = DEFAULT_CHANNEL
+        try:
+            self._sta.config(channel=DEFAULT_CHANNEL)
+        except Exception:
+            pass
         self._en = espnow.ESPNow()
         self._en.active(True)
         self._en.add_peer(BROADCAST)
-        self._mac = ubinascii.hexlify(sta.config('mac')).decode()
+        self._mac = ubinascii.hexlify(self._sta.config('mac')).decode()
+        self._last_any_packet_ms = time.ticks_ms()  # for orphan/silence detection
         self._seq = 0
         self._last_seqs = {}      # sender_mac -> last accepted seq
         self._last_seen = {}      # sender_mac -> now_ms of last packet
@@ -44,6 +69,8 @@ class Mesh:
         self._is_leader = False
         self._leader_mac = None
         self._last_leader_hb_ms = None
+        self._autonomous = False        # this leader has given up finding a server
+        self._mesh_autonomous = False   # observed: the current leader is autonomous
         self._pending_retry = None  # (type, ..., fire_at_ms) for critical retransmit
         # Reusable packet dict — mutated in place on every _broadcast() to avoid
         # allocating a new dict (and triggering GC) on every send.
@@ -78,6 +105,64 @@ class Mesh:
         if self._last_leader_hb_ms is None:
             return None
         return time.ticks_diff(now_ms, self._last_leader_hb_ms)
+
+    @property
+    def channel(self):
+        return self._channel
+
+    @property
+    def autonomous(self):
+        return self._autonomous
+
+    def set_autonomous(self, value):
+        """Leader declares (or clears) autonomous mode — broadcast in heartbeats."""
+        self._autonomous = value
+
+    @property
+    def mesh_autonomous(self):
+        """True if the current leader's heartbeats report autonomous mode."""
+        return self._mesh_autonomous
+
+    def send_hotspot_found(self, ch):
+        """A follower tells the leader a hotspot exists on channel ch, so the
+        leader can resume connecting even after it gave up scanning. Bursted a
+        few times so a single dropped packet doesn't leave the leader asleep."""
+        for _ in range(SET_CHANNEL_REPEATS):
+            self._seq += 1
+            self._send({
+                'type':   'hotspot_found',
+                'sender': self._mac,
+                'seq':    self._seq,
+                'ch':     ch,
+            })
+
+    def silent_for(self, now_ms):
+        """Milliseconds since any mesh packet was last received from a peer.
+        Used to detect a controller orphaned on the wrong channel."""
+        return time.ticks_diff(now_ms, self._last_any_packet_ms)
+
+    def apply_channel(self, ch):
+        """Switch the radio to channel ch. No-op if already there."""
+        if ch == self._channel:
+            return
+        try:
+            self._sta.config(channel=ch)
+            self._channel = ch
+            self._last_any_packet_ms = time.ticks_ms()  # don't instantly trip silence
+        except Exception:
+            pass
+
+    def announce_channel(self, ch):
+        """Burst-broadcast set_channel on the CURRENT channel so followers move
+        before the leader associates and gets dragged off. Call before switching."""
+        for _ in range(SET_CHANNEL_REPEATS):
+            self._seq += 1
+            self._send({
+                'type':   'set_channel',
+                'sender': self._mac,
+                'seq':    self._seq,
+                'ch':     ch,
+            })
 
     def announce(self):
         """Broadcast a heartbeat_request after sync is complete to announce presence."""
@@ -203,6 +288,7 @@ class Mesh:
 
         self._last_seqs[sender] = seq
         self._last_seen[sender] = now_ms
+        self._last_any_packet_ms = now_ms  # heard a peer — not orphaned
 
         # Prune senders not heard from in 5× heartbeat interval to prevent
         # unbounded memory growth over long sessions or with many controllers.
@@ -213,6 +299,10 @@ class Mesh:
                 del self._last_seen[mac]
 
         msg_type = data.get('type')
+
+        if msg_type == 'set_channel':
+            self.apply_channel(data.get('ch', self._channel))
+            return None
 
         if msg_type == 'heartbeat_request':
             nonce = data.get('nonce')
@@ -228,6 +318,8 @@ class Mesh:
                 self._pending[nonce]['count'] += 1
             if data.get('leader'):
                 self.note_leader_heartbeat(sender, now_ms)
+                # Track whether the leader has gone autonomous (no server found)
+                self._mesh_autonomous = bool(data.get('auto'))
             return data
 
         return data
@@ -240,8 +332,15 @@ class Mesh:
         self._pkt['dim']    = dim
         if self._is_leader:
             self._pkt['leader'] = True
-        elif 'leader' in self._pkt:
-            del self._pkt['leader']
+            if self._autonomous:
+                self._pkt['auto'] = True
+            elif 'auto' in self._pkt:
+                del self._pkt['auto']
+        else:
+            if 'leader' in self._pkt:
+                del self._pkt['leader']
+            if 'auto' in self._pkt:
+                del self._pkt['auto']
         if color is not None:
             self._pkt['color'] = list(color)
         elif 'color' in self._pkt:
