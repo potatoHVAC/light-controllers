@@ -5,6 +5,7 @@ from strip import Strip
 from fixture import Fixture
 from button import Button
 from themes import RandomTheme, ColorTheme
+from config import THEMES as _THEME_DEFS
 from controller import Controller
 from mesh import Mesh
 import log as _log
@@ -141,20 +142,23 @@ def main():
     controller = Controller(fixture, themes, network=mesh)
     controller.start(time.ticks_ms(), button=button)
 
-    # Connect bridge if elected leader. If WiFi connection fails, step down
-    # so another controller can win the re-election and try instead.
+    # Connect bridge if elected leader. Bridge failure does NOT cause step-down
+    # — the leader stays leader and retries periodically so it reconnects
+    # automatically when the server comes up later.
     _bridge = None
+    _bridge_retry_at = 0  # 0 = try immediately
+    BRIDGE_RETRY_MS = 10000
+
     if controller.is_leader:
-        _log.write('main', 'elected leader, connecting bridge')
         from bridge import Bridge
-        _bridge = Bridge()
-        if not _bridge.connect():
-            _log.write('main', 'bridge connect failed, stepping down', level='warn')
-            _bridge = None
-            controller._is_leader = False
-            controller._network.is_leader = False
-        else:
+        _log.write('main', 'elected leader, attempting bridge')
+        b = Bridge()
+        if b.connect():
+            _bridge = b
             _log.write('main', 'bridge connected')
+        else:
+            _log.write('main', 'bridge not available, will retry')
+            _bridge_retry_at = time.ticks_add(time.ticks_ms(), BRIDGE_RETRY_MS)
 
     while True:
         now_ms = time.ticks_ms()
@@ -175,18 +179,16 @@ def main():
         if _bridge and received:
             _bridge.forward(received)
 
-        # Connect bridge if newly elected during runtime. Step down on failure.
+        # Retry bridge connection if leader but not yet connected.
         if controller.is_leader and _bridge is None:
-            _log.write('main', 're-elected leader, connecting bridge')
-            from bridge import Bridge
-            _bridge = Bridge()
-            if not _bridge.connect():
-                _log.write('main', 'bridge connect failed, stepping down', level='warn')
-                _bridge = None
-                controller._is_leader = False
-                controller._network.is_leader = False
-            else:
-                _log.write('main', 'bridge connected')
+            if time.ticks_diff(now_ms, _bridge_retry_at) >= 0:
+                from bridge import Bridge
+                b = Bridge()
+                if b.connect():
+                    _bridge = b
+                    _log.write('main', 'bridge connected')
+                else:
+                    _bridge_retry_at = time.ticks_add(now_ms, BRIDGE_RETRY_MS)
 
         # Tick bridge: forward mesh messages and execute incoming commands
         if _bridge:

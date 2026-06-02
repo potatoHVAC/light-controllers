@@ -27,20 +27,32 @@ class Bridge:
         self._last_seq = -1
 
     def connect(self):
-        """Connect to the show control hotspot. Returns True on success."""
+        """Connect to the show control hotspot. Returns True on success.
+
+        On any failure, calls sta.disconnect() (not sta.active(False)) so the
+        WiFi radio stays up for ESP-NOW on the same interface.
+        """
         sta = _net.WLAN(_net.STA_IF)
         sta.active(True)
         sta.connect(OTA_SSID, OTA_PASSWORD)
 
         start = time.ticks_ms()
         while not sta.isconnected():
-            if time.ticks_diff(time.ticks_ms(), start) > WIFI_TIMEOUT_MS:
+            elapsed = time.ticks_diff(time.ticks_ms(), start)
+            if elapsed > WIFI_TIMEOUT_MS:
+                sta.disconnect()
+                return False
+            # Fast-fail on auth errors (wrong password) — don't wait full timeout
+            status = sta.status()
+            if status in (202, 203, 204):
+                sta.disconnect()
                 return False
 
         # Discover the laptop's IP via its UDP broadcast — the gateway is the
         # phone hotspot, not the laptop, so we can't use ifconfig()[2].
         laptop_ip = self._discover_laptop()
         if laptop_ip is None:
+            sta.disconnect()
             return False
 
         self._laptop_ip = laptop_ip
