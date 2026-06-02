@@ -93,7 +93,7 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Art-Net integration:** Allow a main node (or bridge device) to receive Art-Net DMX-over-IP from professional lighting consoles, translating to ESP-NOW commands across the rig network. Keep protocol boundaries clean so this layer can be added without restructuring the core network.
 
-- **Main controller:** A main always wins — its commands override any controller-initiated state. The main is open to requests from individual controllers but decides whether to relay them to the network. Controllers have tiers of authority; the main grants or ignores override requests based on tier. Individual controllers must never need to know about the hierarchy — they just receive and apply state. The `type` field in the mesh packet and the `apply_state` interface on the controller are the designed extension points for this.
+- **Leader / authority hierarchy:** The elected leader (bridge controller) is the current coordinator but has no authority over other controllers beyond what the mesh protocol provides. A future "authority" layer would allow a designated controller — or the laptop server via the bridge — to issue commands that all controllers must obey regardless of local button presses. This is distinct from the elected leader; the authority could be the server itself. The `type` field in the mesh packet and `apply_state` are the designed extension points.
 
 - **Bridge architecture:** At 10,000-unit scale the main speaks a higher-level protocol (Art-Net, OSC, or custom TCP/IP) to bridge nodes, each of which manages a zone of up to ~200 controllers over ESP-NOW. Controllers are unaware they are in a zone — same firmware, same mesh code throughout.
 

@@ -126,11 +126,13 @@ def main():
     button        = Button(BUTTON_PIN)
     soloist_button = Button(BUTTON_SOLOIST_PIN)
 
-    themes = [
-        RandomTheme(),
-        ColorTheme((255, 0, 0), 'red'),
-        ColorTheme((0, 0, 255), 'blue'),
-    ]
+    _theme_map = {'RandomTheme': RandomTheme, 'ColorTheme': ColorTheme}
+    themes = []
+    for td in _THEME_DEFS:
+        if td['name'] == 'random':
+            themes.append(RandomTheme())
+        elif td.get('color'):
+            themes.append(ColorTheme(tuple(td['color']), td['name']))
 
     fixture.clear()
 
@@ -169,7 +171,9 @@ def main():
         elif solo_event == 'long':
             controller.release_solo()
 
-        controller.update(now_ms, bridge=_bridge)
+        received = controller.update(now_ms)
+        if _bridge and received:
+            _bridge.forward(received)
 
         # Connect bridge if newly elected during runtime. Step down on failure.
         if controller.is_leader and _bridge is None:

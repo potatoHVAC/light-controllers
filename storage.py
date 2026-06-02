@@ -21,5 +21,9 @@ def save(data):
     try:
         with open(_FILE, 'w') as f:
             json.dump(data, f)
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            import log
+            log.write('storage', 'save failed: ' + str(e), level='warn')
+        except Exception:
+            pass

@@ -45,6 +45,10 @@ class Mesh:
         self._leader_mac = None
         self._last_leader_hb_ms = None
         self._pending_retry = None  # (type, ..., fire_at_ms) for critical retransmit
+        # Reusable packet dict — mutated in place on every _broadcast() to avoid
+        # allocating a new dict (and triggering GC) on every send.
+        self._pkt = {'type': None, 'sender': self._mac, 'seq': 0,
+                     'theme': None, 'scene': None, 'dim': 1.0}
         # Set last heartbeat far in the past so the first tick() fires immediately.
         self._last_heartbeat_ms = time.ticks_add(time.ticks_ms(), -self.HEARTBEAT_MS)
 
@@ -222,21 +226,24 @@ class Mesh:
         return data
 
     def _broadcast(self, msg_type, theme, scene, dim=1.0, nonce=None, color=None):
-        packet = {
-            'type': msg_type,
-            'sender': self._mac,
-            'seq': self._seq,
-            'theme': theme,
-            'scene': scene,
-            'dim': dim,
-        }
+        self._pkt['type']   = msg_type
+        self._pkt['seq']    = self._seq
+        self._pkt['theme']  = theme
+        self._pkt['scene']  = scene
+        self._pkt['dim']    = dim
         if self._is_leader:
-            packet['leader'] = True
+            self._pkt['leader'] = True
+        elif 'leader' in self._pkt:
+            del self._pkt['leader']
         if color is not None:
-            packet['color'] = list(color)
+            self._pkt['color'] = list(color)
+        elif 'color' in self._pkt:
+            del self._pkt['color']
         if nonce is not None:
-            packet['nonce'] = nonce
-        self._send(packet)
+            self._pkt['nonce'] = nonce
+        elif 'nonce' in self._pkt:
+            del self._pkt['nonce']
+        self._send(self._pkt)
 
     def _send(self, data):
         try:

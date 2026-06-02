@@ -29,6 +29,11 @@ class Fixture:
     def play(self, name, now_ms):
         """Switch to a named scene and reset its state."""
         if name not in self._scenes:
+            try:
+                import log
+                log.write('fixture', 'unknown scene: ' + str(name), level='warn')
+            except Exception:
+                pass
             return
         self._current = self._scenes[name]
         self._current.reset(now_ms)

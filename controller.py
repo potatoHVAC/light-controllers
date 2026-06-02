@@ -46,6 +46,7 @@ class Controller:
         self._is_soloist = False
         self._solo_active = False
         self._solo_dim_target = solo_dim
+        self._last_solo_hb_ms = None   # tracks last heartbeat carrying solo dim
         self._is_leader = False
         self._ota_requested = False
 
@@ -182,9 +183,12 @@ class Controller:
         self._dim = max(0.0, min(1.0, factor))
         self._fixture.set_dim(self._dim)
 
-    def update(self, now_ms, bridge=None):
-        """Advance the current scene and flush to hardware. Call every loop tick."""
+    def update(self, now_ms):
+        """Advance the current scene and flush to hardware. Call every loop tick.
+        Returns the raw mesh message received this tick (or None) so the caller
+        can forward it to the bridge without coupling mesh to bridge."""
         self._fixture.update(now_ms)
+        received = None
         if self._network:
             msg = self._network.tick(
                 self._theme_name(),
@@ -193,9 +197,8 @@ class Controller:
                 now_ms,
                 color=self._theme_color(),
             )
-            if msg and bridge:
-                bridge.forward(msg)
             if msg:
+                received = msg
                 msg_type = msg.get('type')
                 if msg_type in ('heartbeat', 'change'):
                     color = msg.get('color')
@@ -204,7 +207,10 @@ class Controller:
                         color=tuple(color) if color else None,
                     )
                     if not self._is_soloist:
-                        self.set_dim(msg.get('dim', 1.0))
+                        incoming_dim = msg.get('dim', 1.0)
+                        self.set_dim(incoming_dim)
+                        if self._solo_active and incoming_dim < 1.0:
+                            self._last_solo_hb_ms = now_ms
                     self._handle_leader_heartbeat(msg, now_ms)
                 elif msg_type in ('solo', 'dim'):
                     self._handle_dim_msg(msg)
@@ -217,9 +223,17 @@ class Controller:
                 if age is not None and age >= self._leader_reelect_ms:
                     self._become_leader(now_ms)
 
+            # Auto-release solo if soloist heartbeats have gone silent
+            if self._solo_active and not self._is_soloist and self._last_solo_hb_ms is not None:
+                if time.ticks_diff(now_ms, self._last_solo_hb_ms) >= self._leader_reelect_ms:
+                    self._solo_active = False
+                    self._last_solo_hb_ms = None
+                    self.set_dim(1.0)
+
         if self._save_pending and time.ticks_diff(now_ms, self._save_after) >= 0:
             self._save_pending = False
             storage.save({'theme': self._theme_idx, 'scenes': self._scene_idxs})
+        return received
 
     def _become_leader(self, now_ms):
         self._is_leader = True

@@ -172,8 +172,8 @@ def run(np=None):
         if np:
             np.fill(_GREEN)
             np.write()
-            end = time.ticks_add(time.ticks_ms(), 200)
-            while time.ticks_diff(time.ticks_ms(), end) < 0:
+            start = time.ticks_ms()
+            while time.ticks_diff(time.ticks_ms(), start) < 200:
                 pass
             np.fill(_BLACK)
             np.write()
