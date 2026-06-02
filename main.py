@@ -127,7 +127,6 @@ def main():
     button        = Button(BUTTON_PIN)
     soloist_button = Button(BUTTON_SOLOIST_PIN)
 
-    _theme_map = {'RandomTheme': RandomTheme, 'ColorTheme': ColorTheme}
     themes = []
     for td in _THEME_DEFS:
         if td['name'] == 'random':

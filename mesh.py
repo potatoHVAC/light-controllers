@@ -102,14 +102,15 @@ class Mesh:
         """Broadcast solo state. active=True dims all others; False restores full brightness.
         Sent twice with a short gap to improve delivery reliability."""
         self._seq += 1
-        packet = {
-            'type': 'solo',
-            'sender': self._mac,
-            'seq': self._seq,
-            'active': active,
-            'dim': dim if active else 1.0,
-        }
-        self._send(packet)
+        self._pkt['type']   = 'solo'
+        self._pkt['seq']    = self._seq
+        self._pkt['active'] = active
+        self._pkt['dim']    = dim if active else 1.0
+        self._pkt.pop('theme', None)
+        self._pkt.pop('scene', None)
+        self._pkt.pop('color', None)
+        self._pkt.pop('nonce', None)
+        self._send(self._pkt)
         self._pending_retry = ('solo', active, dim, None, None,
                                time.ticks_add(time.ticks_ms(), 200))
 
@@ -163,9 +164,15 @@ class Mesh:
                 elif msg_type == 'solo':
                     _, active, d, _, _, _ = self._pending_retry
                     self._seq += 1
-                    self._send({'type': 'solo', 'sender': self._mac,
-                                'seq': self._seq, 'active': active,
-                                'dim': d if active else 1.0})
+                    self._pkt['type']   = 'solo'
+                    self._pkt['seq']    = self._seq
+                    self._pkt['active'] = active
+                    self._pkt['dim']    = d if active else 1.0
+                    self._pkt.pop('theme', None)
+                    self._pkt.pop('scene', None)
+                    self._pkt.pop('color', None)
+                    self._pkt.pop('nonce', None)
+                    self._send(self._pkt)
                 self._pending_retry = None
 
         for nonce in list(self._pending):
