@@ -109,6 +109,19 @@ class Mesh:
         self._pending_retry = ('solo', active, dim, None, None,
                                time.ticks_add(time.ticks_ms(), 200))
 
+    def send_log(self, source, msg, level='info'):
+        """Broadcast a log entry. The bridge picks it up and forwards to the server."""
+        self._seq += 1
+        self._send({
+            'type':   'log',
+            'sender': self._mac,
+            'seq':    self._seq,
+            'src':    source,
+            'lvl':    level,
+            'msg':    msg,
+            't':      time.ticks_ms(),
+        })
+
     def send_ota_update(self):
         """Broadcast an OTA update request to all controllers in the mesh."""
         self._seq += 1

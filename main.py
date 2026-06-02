@@ -7,6 +7,7 @@ from button import Button
 from themes import RandomTheme, ColorTheme
 from controller import Controller
 from mesh import Mesh
+import log as _log
 
 # LED Brain: 2 strips × 3 LEDs
 PRIMARY_PIN        = 26
@@ -134,6 +135,7 @@ def main():
     fixture.clear()
 
     mesh = Mesh()
+    _log.set_mesh(mesh)
     controller = Controller(fixture, themes, network=mesh)
     controller.start(time.ticks_ms(), button=button)
 
@@ -141,12 +143,16 @@ def main():
     # so another controller can win the re-election and try instead.
     _bridge = None
     if controller.is_leader:
+        _log.write('main', 'elected leader, connecting bridge')
         from bridge import Bridge
         _bridge = Bridge()
         if not _bridge.connect():
+            _log.write('main', 'bridge connect failed, stepping down', level='warn')
             _bridge = None
             controller._is_leader = False
             controller._network.is_leader = False
+        else:
+            _log.write('main', 'bridge connected')
 
     while True:
         now_ms = time.ticks_ms()
@@ -167,12 +173,16 @@ def main():
 
         # Connect bridge if newly elected during runtime. Step down on failure.
         if controller.is_leader and _bridge is None:
+            _log.write('main', 're-elected leader, connecting bridge')
             from bridge import Bridge
             _bridge = Bridge()
             if not _bridge.connect():
+                _log.write('main', 'bridge connect failed, stepping down', level='warn')
                 _bridge = None
                 controller._is_leader = False
                 controller._network.is_leader = False
+            else:
+                _log.write('main', 'bridge connected')
 
         # Tick bridge: forward mesh messages and execute incoming commands
         if _bridge:

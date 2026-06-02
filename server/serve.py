@@ -35,7 +35,7 @@ import hashlib as _hashlib
 
 OTA_FILES = [
     'boot.py', 'main.py', 'controller.py', 'mesh.py', 'bridge.py',
-    'auth.py', 'ota.py', 'color.py', 'button.py', 'strip.py',
+    'auth.py', 'log.py', 'ota.py', 'color.py', 'button.py', 'strip.py',
     'fixture.py', 'storage.py', 'themes.py', 'secrets.py', 'config.py',
     'patterns/__init__.py', 'patterns/base.py', 'patterns/bounce_pulse.py',
     'patterns/breathe.py', 'patterns/breathe_center.py', 'patterns/center_meet.py',
@@ -112,6 +112,13 @@ def _bridge_receiver():
                 _mesh_state['solo_active'] = msg.get('active', False)
                 if 'dim' in msg:
                     _mesh_state['dim'] = msg['dim']
+            elif msg_type == 'log':
+                sender = msg.get('sender', 'unknown')[:8]
+                lvl  = msg.get('lvl', 'info')
+                src  = msg.get('src', '?')
+                text = msg.get('msg', '')
+                entry_type = 'warn' if lvl == 'warn' else ('err' if lvl == 'error' else 'info')
+                _log(f'[{sender}] [{src}] {text}', entry_type)
 
 
 def _sign_payload(payload_bytes):
