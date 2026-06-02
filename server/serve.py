@@ -35,7 +35,8 @@ import hashlib as _hashlib
 
 OTA_FILES = [
     'boot.py', 'main.py', 'controller.py', 'mesh.py', 'bridge.py',
-    'auth.py', 'log.py', 'ota.py', 'color.py', 'button.py', 'strip.py',
+    'auth.py', 'log.py', 'leader_link.py', 'recovery.py',
+    'ota.py', 'color.py', 'button.py', 'strip.py',
     'fixture.py', 'storage.py', 'themes.py', 'secrets.py', 'config.py',
     'patterns/__init__.py', 'patterns/base.py', 'patterns/bounce_pulse.py',
     'patterns/breathe.py', 'patterns/breathe_center.py', 'patterns/center_meet.py',

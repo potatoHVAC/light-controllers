@@ -105,6 +105,47 @@ The leader is elected automatically. If the leader controller goes offline, anot
 
 ---
 
+## Tests
+
+The suite runs under CPython — the MicroPython hardware modules (`machine`,
+`neopixel`, `network`, `espnow`, `uhashlib`, `ubinascii`) are replaced with
+fakes, and `time` is driven by a controllable clock. Integration tests build
+real `Controller` + `Mesh` + `Fixture` + `Strip` instances and run them against
+an in-memory, channel-aware mesh bus, so multiple controllers are simulated in
+one process.
+
+### Running
+
+```bash
+python3 -m pip install -r tests/requirements.txt   # one-time (needs pytest)
+./tests/run.sh
+```
+
+Pass extra arguments straight through to pytest:
+
+```bash
+./tests/run.sh -k election     # only tests matching "election"
+./tests/run.sh tests/unit      # only the unit tests
+./tests/run.sh -v              # verbose
+```
+
+### Layout
+
+- `tests/fakes/` — fake hardware modules and the shared radio **bus** (models
+  ESP-NOW only reaching peers on the same WiFi channel).
+- `tests/harness.py` — the clock and the multi-node `Simulation`.
+- `tests/conftest.py` — installs the fakes before any controller code imports.
+- `tests/unit/` — pure logic: color math, the HMAC cross-runtime contract,
+  button debounce, strip dim scaling, storage, themes, mesh dedup/channel,
+  bridge auth.
+- `tests/integration/` — leader election, scene/theme propagation, solo,
+  channel convergence across simulated controllers.
+
+No hardware is required. Anything that can only be checked on a real ESP32
+(actual ESP-NOW range, NeoPixel timing, flash, GC) is intentionally out of scope.
+
+---
+
 ## Wiring Diagram
 
 ### 12v Non-Addressable LED Strip (SMD2835)

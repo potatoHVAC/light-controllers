@@ -82,52 +82,56 @@ class Controller:
             'leader':     self._is_leader,
         }
 
-    def start(self, now_ms, button=None):
-        """Wait for network sync then play the initial scene.
+    def begin(self, now_ms):
+        """Start the (non-blocking) sync/election phase. Call once, then call
+        tick_start() each tick until it returns True. The strips stay dark until
+        startup completes (synced from the mesh, elected leader, or button)."""
+        self._synced = False
+        self._election_deadline = time.ticks_add(now_ms, self._election_timeout_ms)
 
-        Uses tick() so heartbeat_request messages are properly handled during
-        the wait. If no heartbeat arrives within election_timeout_ms, this
-        controller declares itself leader (it's first on the network).
+    def tick_start(self, now_ms, button_pressed=False):
+        """Advance startup one step. Returns True when startup is complete.
 
-        Button is locked out once a network sync message arrives so a
-        simultaneous press can't override network data.
-        """
-        if self._network and button:
-            synced = False
-            election_deadline = time.ticks_add(now_ms, self._election_timeout_ms)
+        Syncs from the first heartbeat/change, or declares itself leader if no
+        heartbeat arrives within election_timeout_ms, or starts immediately on a
+        button press. Button is locked out once a sync message has arrived."""
+        if not self._network:
+            self._finish_start(now_ms)
+            return True
 
-            while True:
-                now_ms = time.ticks_ms()
-                msg = self._network.tick(
-                    self._theme_name(),
-                    self._scene_name(),
-                    self._network_dim(),
-                    now_ms,
-                    color=self._theme_color(),
+        msg = self._network.tick(
+            self._theme_name(), self._scene_name(),
+            self._network_dim(), now_ms, color=self._theme_color(),
+        )
+        if msg:
+            msg_type = msg.get('type')
+            if msg_type in ('heartbeat', 'change'):
+                color = msg.get('color')
+                self._apply_network_state(
+                    msg.get('theme'), msg.get('scene'), now_ms,
+                    color=tuple(color) if color else None,
                 )
-                if msg:
-                    msg_type = msg.get('type')
-                    if msg_type in ('heartbeat', 'change'):
-                        color = msg.get('color')
-                        self._apply_network_state(
-                            msg.get('theme'), msg.get('scene'), now_ms,
-                            color=tuple(color) if color else None,
-                        )
-                        if not self._is_soloist:
-                            self.set_dim(msg.get('dim', 1.0))
-                        self._handle_leader_heartbeat(msg, now_ms)
-                        synced = True
-                        break
-                    elif msg_type in ('solo', 'dim'):
-                        self._handle_dim_msg(msg)
+                if not self._is_soloist:
+                    self.set_dim(msg.get('dim', 1.0))
+                self._handle_leader_heartbeat(msg, now_ms)
+                self._finish_start(now_ms)
+                return True
+            elif msg_type in ('solo', 'dim'):
+                self._handle_dim_msg(msg)
 
-                if time.ticks_diff(now_ms, election_deadline) >= 0:
-                    self._become_leader(now_ms)
-                    break
+        if time.ticks_diff(now_ms, self._election_deadline) >= 0:
+            self._become_leader(now_ms)
+            self._finish_start(now_ms)
+            return True
 
-                if not synced and button.update(now_ms):
-                    break
+        if not self._synced and button_pressed:
+            self._finish_start(now_ms)
+            return True
 
+        return False
+
+    def _finish_start(self, now_ms):
+        if self._network:
             self._network.announce()
         self._play_current(now_ms)
 
