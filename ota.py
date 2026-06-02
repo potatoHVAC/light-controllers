@@ -21,6 +21,23 @@ _GREEN  = (0, 255, 0)
 _BLACK  = (0, 0, 0)
 
 _PROGRESS_CYCLE = [1, 2, 3, 0]
+_DONE_FLASHES   = 3
+_DONE_FLASH_MS  = 300
+
+
+def _busy_wait(ms):
+    start = time.ticks_ms()
+    while time.ticks_diff(time.ticks_ms(), start) < ms:
+        pass
+
+
+def _flash_done(np):
+    """Signal a completed download: 3 green flashes at 300ms intervals."""
+    for _ in range(_DONE_FLASHES):
+        np.fill(_GREEN); np.write()
+        _busy_wait(_DONE_FLASH_MS)
+        np.fill(_BLACK); np.write()
+        _busy_wait(_DONE_FLASH_MS)
 
 
 def _set_progress(np, leds_on):
@@ -170,13 +187,7 @@ def run(np=None):
             mf.write('1')
 
         if np:
-            np.fill(_GREEN)
-            np.write()
-            start = time.ticks_ms()
-            while time.ticks_diff(time.ticks_ms(), start) < 200:
-                pass
-            np.fill(_BLACK)
-            np.write()
+            _flash_done(np)
 
         result = True
         return result

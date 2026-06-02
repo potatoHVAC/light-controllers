@@ -80,9 +80,15 @@ except OSError:
 
 
 def _run_ota():
-    """Download and stage an OTA update, then reboot to apply it."""
+    """Black out the strips, then download and stage an OTA update and reboot."""
     import neopixel
     import machine
+    # Lights off before the update so the rig goes dark instead of freezing on
+    # its last frame for the duration of the download.
+    for _pin in (PRIMARY_PIN, SECONDARY_PIN):
+        _off = neopixel.NeoPixel(Pin(_pin), NUM_LEDS)
+        _off.fill((0, 0, 0))
+        _off.write()
     np = neopixel.NeoPixel(Pin(PRIMARY_PIN), NUM_LEDS)
     from ota import run as ota_run
     if ota_run(np=np):

@@ -56,6 +56,9 @@ _bridge_sock        = None
 _last_bridge_packet = 0.0   # time.time() of last received bridge packet
 BRIDGE_TIMEOUT_S    = 15    # mark disconnected after 3× heartbeat interval
 
+_known = {}                 # controller mac -> time.time() last seen
+CONTROLLER_TIMEOUT_S = 20   # drop a controller from the count after this silence
+
 _mesh_state = {
     'theme':      None,
     'scene':      None,
@@ -102,6 +105,10 @@ def _bridge_receiver():
 
         if not msg.get('fwd'):
             continue
+
+        sender = msg.get('sender')
+        if sender:
+            _known[sender] = time.time()
 
         with _bridge_lock:
             if msg_type in ('heartbeat', 'change'):
@@ -211,6 +218,14 @@ def _log(msg, entry_type='info'):
     print(entry['msg'])
 
 
+def _active_controllers():
+    """Count controllers heard from recently (prunes stale entries)."""
+    cutoff = time.time() - CONTROLLER_TIMEOUT_S
+    for mac in [m for m, t in _known.items() if t < cutoff]:
+        del _known[mac]
+    return len(_known)
+
+
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
 OTA_HTML = """\
@@ -277,7 +292,7 @@ input[type=range]{width:100%;margin-top:6px}
 #log{font-family:monospace;font-size:12px;max-height:160px;overflow-y:auto}
 .ok{color:#4a4}.info{color:#777}.warn{color:#aa6}.err{color:#a44}.entry{padding:1px 0}
 </style></head><body>
-<h1>Light Controllers</h1>
+<h1>Light Controllers &nbsp;<a href="/debug" style="font-size:13px;color:#4af">debug &rarr;</a></h1>
 <div class="card">
   <div class="status">Theme: <span id="theme">—</span> &nbsp;|&nbsp;
     Scene: <span id="scene">—</span> &nbsp;|&nbsp; Dim: <span id="dim">—</span></div>
@@ -291,7 +306,7 @@ input[type=range]{width:100%;margin-top:6px}
   </div>
   <div class="row">
     <button onclick="post('/random_scene')">Random Scene</button>
-    <button id="solobtn" class="solo" onclick="toggleSolo()">Solo Off</button>
+    <button class="solo" onclick="post('/release_solo')">Release Solo</button>
   </div>
   <label>Dim <span id="dimval">100</span>%</label>
   <input type="range" min="0" max="100" value="100"
@@ -310,17 +325,9 @@ input[type=range]{width:100%;margin-top:6px}
   <div id="log"><div class="entry info">Loading...</div></div>
 </div>
 <script>
-var _solo=false;
 function post(path,body){
   fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body||{})}).then(load);
-}
-function toggleSolo(){
-  _solo=!_solo;
-  post(_solo?'/solo':'/release_solo');
-  var b=document.getElementById('solobtn');
-  b.textContent=_solo?'Solo On':'Solo Off';
-  b.className='solo'+(_solo?' active':'');
 }
 function load(){
   fetch('/status').then(r=>r.json()).then(d=>{
@@ -354,6 +361,61 @@ setInterval(load,2000);load();
 </script></body></html>
 """
 
+DEBUG_HTML = """\
+<!DOCTYPE html><html>
+<head><meta charset="utf-8"><title>Light Controllers — Debug</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:sans-serif;background:#111;color:#ddd;padding:20px;max-width:640px;margin:0 auto}
+h1{color:#4af;margin-bottom:16px;font-size:20px}
+a{color:#4af}
+.card{background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin-bottom:12px}
+.big{font-size:28px;font-weight:bold;color:#eee}
+button{width:100%;padding:12px;border:1px solid #aa6;border-radius:6px;background:#3a2a0a;color:#eee;font-size:14px;cursor:pointer}
+#log{font-family:monospace;font-size:12px;max-height:360px;overflow-y:auto}
+.ok{color:#4a4}.info{color:#777}.warn{color:#aa6}.err{color:#a44}.entry{padding:1px 0}
+</style></head><body>
+<h1>Debug &nbsp;<a href="/panel" style="font-size:13px">&larr; control panel</a></h1>
+<div class="card">
+  <div style="font-size:13px;color:#aaa">CONTROLLERS IN MESH</div>
+  <div class="big" id="count">—</div>
+  <div id="bridge" style="font-size:12px;color:#777"></div>
+</div>
+<div class="card">
+  <div style="font-size:13px;color:#aa6;margin-bottom:8px">PUSH FIRMWARE</div>
+  <button onclick="deployUpdate()">Push Firmware Update to All Controllers</button>
+  <div id="deploystatus" style="font-size:12px;color:#777;margin-top:6px"></div>
+</div>
+<div class="card">
+  <div style="font-size:13px;color:#aaa;margin-bottom:8px">SERVER + MESH LOG</div>
+  <div id="log"><div class="entry info">Loading...</div></div>
+</div>
+<script>
+function deployUpdate(){
+  var el=document.getElementById('deploystatus'); el.textContent='Sending...';
+  fetch('/deploy',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(r=>r.json()).then(d=>{el.textContent=d.ok?'Update sent.':'Failed to reach bridge.';
+      el.style.color=d.ok?'#4a4':'#a44';}).catch(()=>{el.textContent='Error.';el.style.color='#a44';});
+}
+function load(){
+  fetch('/status').then(r=>r.json()).then(d=>{
+    document.getElementById('count').textContent=(d.controllers==null?'—':d.controllers);
+    var b=document.getElementById('bridge');
+    b.textContent=(d.connected?'bridge connected':'bridge not connected')
+      +(d.autonomous?' · mesh autonomous':'');
+  }).catch(()=>{});
+  fetch('/log').then(r=>r.json()).then(e=>{
+    if(!e.length)return;
+    var el=document.getElementById('log');
+    el.innerHTML=e.slice(-200).map(x=>`<div class="entry ${x.type}">${x.msg}</div>`).join('');
+    el.scrollTop=el.scrollHeight;
+  }).catch(()=>{});
+}
+setInterval(load,2000);load();
+</script></body></html>
+"""
+
 
 # ── HTTP handler ──────────────────────────────────────────────────────────────
 
@@ -374,6 +436,9 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/panel':
             self._respond(200, 'text/html', PANEL_HTML.encode())
 
+        elif self.path == '/debug':
+            self._respond(200, 'text/html', DEBUG_HTML.encode())
+
         elif self.path == '/status':
             with _bridge_lock:
                 state = dict(_mesh_state)
@@ -381,6 +446,7 @@ class Handler(BaseHTTPRequestHandler):
                 _last_bridge_packet > 0 and
                 time.time() - _last_bridge_packet < BRIDGE_TIMEOUT_S
             )
+            state['controllers'] = _active_controllers()
             self._respond(200, 'application/json', json.dumps(state).encode())
 
         elif self.path == '/manifest.json':

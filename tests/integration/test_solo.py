@@ -34,7 +34,7 @@ def test_release_solo_restores_full_brightness():
 
     BUS.bind(1)
     soloist.ctrl.release_solo()
-    sim.run(1000)
+    sim.run(2000)   # release fades back to full over ~1s
     assert leader.ctrl.status()['dim'] == 1.0
 
 

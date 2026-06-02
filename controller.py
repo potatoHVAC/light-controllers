@@ -31,7 +31,8 @@ class Controller:
 
     def __init__(self, fixture, themes, network=None,
                  solo_dim=0.2, save_delay_ms=2000,
-                 election_timeout_ms=5000, leader_reelect_ms=10000):
+                 election_timeout_ms=5000, leader_reelect_ms=10000,
+                 solo_release_fade_ms=1000):
         self._fixture = fixture
         self._themes = themes
         self._network = network
@@ -39,6 +40,7 @@ class Controller:
         self._save_delay_ms = save_delay_ms
         self._election_timeout_ms = election_timeout_ms
         self._leader_reelect_ms = leader_reelect_ms
+        self._solo_release_fade_ms = solo_release_fade_ms
         self._save_pending = False
         self._save_after = 0
         self._scenes = []
@@ -49,6 +51,11 @@ class Controller:
         self._last_solo_hb_ms = None   # tracks last heartbeat carrying solo dim
         self._is_leader = False
         self._ota_requested = False
+        # Dim fade state (used when releasing solo). _fade_dur == 0 means idle.
+        self._fade_from = 1.0
+        self._fade_to = 1.0
+        self._fade_start_ms = 0
+        self._fade_dur = 0
 
         state = storage.load({'theme': 0, 'scenes': [0] * len(themes)})
         self._theme_idx = min(state['theme'], len(themes) - 1)
@@ -117,7 +124,7 @@ class Controller:
                 self._finish_start(now_ms)
                 return True
             elif msg_type in ('solo', 'dim'):
-                self._handle_dim_msg(msg)
+                self._handle_dim_msg(msg, now_ms)
 
         if time.ticks_diff(now_ms, self._election_deadline) >= 0:
             self._become_leader(now_ms)
@@ -170,15 +177,16 @@ class Controller:
         self._is_soloist = True
         self._solo_active = True
         self._solo_dim_target = self._solo_dim
+        self._fade_dur = 0            # cancel any in-progress release fade
         self.set_dim(1.0)
         if self._network:
             self._network.send_solo(active=True, dim=self._solo_dim)
 
     def release_solo(self):
-        """Release solo: restore full brightness across the mesh."""
+        """Release solo: fade back to full brightness across the mesh."""
         self._is_soloist = False
         self._solo_active = False
-        self.set_dim(1.0)
+        self._start_release_fade(time.ticks_ms())
         if self._network:
             self._network.send_solo(active=False)
 
@@ -186,6 +194,27 @@ class Controller:
         """Apply a brightness ceiling to all strips."""
         self._dim = max(0.0, min(1.0, factor))
         self._fixture.set_dim(self._dim)
+
+    def _start_release_fade(self, now_ms):
+        """Begin a non-blocking fade from the current dim up to full brightness."""
+        if self._solo_release_fade_ms <= 0:
+            self.set_dim(1.0)
+            return
+        self._fade_from     = self._dim
+        self._fade_to       = 1.0
+        self._fade_start_ms = now_ms
+        self._fade_dur      = self._solo_release_fade_ms
+
+    def _apply_fade(self, now_ms):
+        if self._fade_dur <= 0:
+            return
+        t = time.ticks_diff(now_ms, self._fade_start_ms)
+        if t >= self._fade_dur:
+            self.set_dim(self._fade_to)
+            self._fade_dur = 0
+        else:
+            frac = t / self._fade_dur
+            self.set_dim(self._fade_from + (self._fade_to - self._fade_from) * frac)
 
     def update(self, now_ms):
         """Advance the current scene and flush to hardware. Call every loop tick.
@@ -210,14 +239,14 @@ class Controller:
                         msg.get('theme'), msg.get('scene'), now_ms,
                         color=tuple(color) if color else None,
                     )
-                    if not self._is_soloist:
+                    if not self._is_soloist and self._fade_dur <= 0:
                         incoming_dim = msg.get('dim', 1.0)
                         self.set_dim(incoming_dim)
                         if self._solo_active and incoming_dim < 1.0:
                             self._last_solo_hb_ms = now_ms
                     self._handle_leader_heartbeat(msg, now_ms)
                 elif msg_type in ('solo', 'dim'):
-                    self._handle_dim_msg(msg)
+                    self._handle_dim_msg(msg, now_ms)
                 elif msg_type == 'ota_update':
                     self._ota_requested = True
 
@@ -233,6 +262,8 @@ class Controller:
                     self._solo_active = False
                     self._last_solo_hb_ms = None
                     self.set_dim(1.0)
+
+        self._apply_fade(now_ms)
 
         if self._save_pending and time.ticks_diff(now_ms, self._save_after) >= 0:
             self._save_pending = False
@@ -269,20 +300,21 @@ class Controller:
         know what level to use, not 1.0 which would incorrectly restore them."""
         return self._solo_dim_target if self._is_soloist else self._dim
 
-    def _handle_dim_msg(self, msg):
+    def _handle_dim_msg(self, msg, now_ms):
         msg_type = msg.get('type')
         if msg_type == 'solo':
             if msg.get('active', False):
                 self._is_soloist = False
                 self._solo_active = True
                 self._solo_dim_target = msg.get('dim', self._solo_dim)
+                self._fade_dur = 0                 # cancel any release fade
                 self.set_dim(self._solo_dim_target)
             else:
                 self._is_soloist = False
                 self._solo_active = False
-                self.set_dim(1.0)
+                self._start_release_fade(now_ms)   # fade back to full
         elif msg_type == 'dim':
-            if not self._is_soloist:
+            if not self._is_soloist and self._fade_dur <= 0:
                 self.set_dim(msg.get('dim', 1.0))
 
     def _apply_network_state(self, theme_name, scene_name, now_ms, color=None):

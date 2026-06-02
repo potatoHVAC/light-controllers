@@ -107,8 +107,6 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Error mode display:** Use the addressable strips themselves as the error indicator. On network failure, boot failure, or other fault conditions, display a distinct error pattern on the strips rather than a separate status LED.
 
-- **Web/phone show control interface:** Expand the OTA server into a full show control panel accessible from a browser or phone. Allows a director to change themes, scenes, and dim levels across the rig without touching any controller. Extends the existing server infrastructure rather than replacing it.
-
 - **Per-member fixture configs:** Each band member has a custom config (strip lengths, pattern tuning) sized to their instrument. Stored in the server database alongside member metadata (name, instrument, role, grouping tags like "drummers" or "horns"). Used for quick controller swap-outs and for group commands — e.g. dim all horns, solo all drummers. Each member config includes a default scene (theme + scene name) that replaces the solid color fallback for unknown themes. A mesh packet type `default` should send every controller to its own stored default scene — useful for resetting the rig to a known per-member state between songs.
 
 - **Controller identity and assignment:** Controllers need a persistent identity (short ID derived from MAC) that can be assigned to a band member in the database. Enables the server to push the right fixture config when a controller joins, and to target commands at specific members or groups rather than broadcasting to all.
@@ -119,7 +117,7 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Independent mode:** Dual button hold toggles a controller in and out of independent mode. In independent mode the controller ignores incoming mesh commands and does not broadcast its own changes — it runs its own patterns locally without affecting or being affected by the group. On exit, the controller re-syncs to the current mesh state. The control panel should also be able to pull a controller out of independent mode remotely.
 
-- **Control panel debug page:** A `/debug` page on the server that displays a live log of mesh packets forwarded by the bridge — sender MAC, message type, theme/scene/dim, sequence number, and timestamp. Failed bridge commands should appear as warnings in this log. The server already buffers log entries; just add packet forwarding to the log and build the debug UI on top.
+- **Control panel debug page — structured packet view:** The `/debug` page exists (combined server+mesh log, push-firmware button, live controller count). Remaining work: a structured per-packet stream — sender MAC, message type, theme/scene/dim, sequence number, timestamp — rather than just log lines.
 
 - **Monitoring and metrics:** Track per-controller health over time — last seen timestamp, packet counts, command success/failure rates, leader election history. Exportable for post-show review. Groundwork for alerting when a controller goes silent mid-show.
 
@@ -130,13 +128,3 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
 
 - **Button Boxes:** Create code for button command boxes that have more buttons but no light outputs. They will have more options for triggering actions in the mesh. These boxes should take precident as lead controllers since they won't have lights.
-
-- **Bug List:** 
-* add a lights off command before starting an update.
-
-- **Change Request:**
-* 1 second fade back to full bright when turning off solo mode
-* server button for solo mode is only solo mode off that sends the release command
-* change download complete visual to 3 green lights flashing at 300 ms intervals 3 times. 
-* server log and mesh log on a debug(-name) page along with the push firmware button.
-* display count of known controlers in the mesh. 
