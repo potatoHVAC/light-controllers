@@ -6,6 +6,8 @@ These rules have no exceptions. They override all other instructions.
 
 - **Never commit plaintext passwords, keys, tokens, or secrets to the repository.** All credentials belong in untracked files (`secrets.py`, `.env`) or encrypted secret stores. Never use hardcoded credential fallbacks — if a secrets file is missing, fail loudly with a clear error. Before writing any credential to a file, verify that file is in `.gitignore`. Scan changed files for credential patterns before every commit.
 
+- **No blocking during normal operation.** The main loop must never block — no `sleep()`, no polling loops, no waiting on I/O. All long-running operations (WiFi connection, discovery, OTA) must be implemented as non-blocking state machines that advance one step per tick and return immediately. Blocking is only permitted during one-shot startup operations before the main loop begins (e.g., the A/B swap, the initial boot sequence).
+
 
 ## Project Purpose
 
@@ -126,3 +128,6 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **Rename LIGHTRIG_OTA network:** The shared hotspot SSID is still named `LIGHTRIG_OTA` but now serves both OTA updates and show control. Rename to something more generic (e.g. `LIGHTRIG`) once we decide on a final name.
 
 - **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
+
+- **Bug List:** 
+* 

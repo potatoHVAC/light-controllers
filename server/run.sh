@@ -16,8 +16,7 @@ cd "$(dirname "$0")/.."
 
 docker build -f server/Dockerfile -t lightrig-ota . && \
   docker run --rm \
-    -p 8080:8080 \
-    -p 5001:5001/udp \
+    --network host \
     -v "$(pwd):/firmware" \
     -e FIRMWARE_DIR=/firmware \
     lightrig-ota

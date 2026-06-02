@@ -141,23 +141,18 @@ def main():
     controller = Controller(fixture, themes, network=mesh)
     controller.start(time.ticks_ms(), button=button)
 
-    # Connect bridge if elected leader. Bridge failure does NOT cause step-down
-    # — the leader stays leader and retries periodically so it reconnects
-    # automatically when the server comes up later.
+    # Bridge connection is non-blocking — tick_connect() advances the state
+    # machine one step per loop iteration. The leader stays leader regardless
+    # of bridge status and reconnects automatically when the server appears.
     _bridge = None
-    _bridge_retry_at = 0  # 0 = try immediately
-    BRIDGE_RETRY_MS = 10000
+    _bridge_retry_at  = 0      # 0 = start immediately on first loop tick
+    _bridge_retry_ms  = 5000   # current retry interval, doubles on each failure
+    BRIDGE_RETRY_INIT = 5000   # start at 5 seconds
+    BRIDGE_RETRY_MAX  = 60000  # cap at 1 minute
 
     if controller.is_leader:
         from bridge import Bridge
-        _log.write('main', 'elected leader, attempting bridge')
-        b = Bridge()
-        if b.connect():
-            _bridge = b
-            _log.write('main', 'bridge connected')
-        else:
-            _log.write('main', 'bridge not available, will retry')
-            _bridge_retry_at = time.ticks_add(time.ticks_ms(), BRIDGE_RETRY_MS)
+        _bridge = Bridge()
 
     while True:
         now_ms = time.ticks_ms()
@@ -175,22 +170,29 @@ def main():
             controller.release_solo()
 
         received = controller.update(now_ms)
-        if _bridge and received:
+        if _bridge and _bridge.is_connected() and received:
             _bridge.forward(received)
 
-        # Retry bridge connection if leader but not yet connected.
-        if controller.is_leader and _bridge is None:
-            if time.ticks_diff(now_ms, _bridge_retry_at) >= 0:
-                from bridge import Bridge
-                b = Bridge()
-                if b.connect():
-                    _bridge = b
+        # Advance bridge state machine each tick — non-blocking.
+        if controller.is_leader:
+            if _bridge is None:
+                # Create bridge instance when retry timer fires
+                if time.ticks_diff(now_ms, _bridge_retry_at) >= 0:
+                    from bridge import Bridge
+                    _bridge = Bridge()
+            else:
+                result = _bridge.tick_connect(now_ms)
+                if result is True:
                     _log.write('main', 'bridge connected')
-                else:
-                    _bridge_retry_at = time.ticks_add(now_ms, BRIDGE_RETRY_MS)
+                    _bridge_retry_ms = BRIDGE_RETRY_INIT  # reset backoff on success
+                elif result is False:
+                    # Back off exponentially up to 1 minute
+                    _bridge_retry_ms = min(_bridge_retry_ms * 2, BRIDGE_RETRY_MAX)
+                    _bridge_retry_at = time.ticks_add(now_ms, _bridge_retry_ms)
+                    _bridge = None
 
         # Tick bridge: forward mesh messages and execute incoming commands
-        if _bridge:
+        if _bridge and _bridge.is_connected():
             cmd = _bridge.tick()
             if cmd:
                 _execute_bridge_command(cmd, controller, now_ms)
