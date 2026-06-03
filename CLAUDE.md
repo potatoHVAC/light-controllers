@@ -152,4 +152,53 @@ in heartbeats so the admin page can flag outdated units.
 
 - **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
 
-- **Button Boxes:** Create code for button command boxes that have more buttons but no light outputs. They will have more options for triggering actions in the mesh. These boxes should take precident as lead controllers since they won't have lights.
+- **Button Boxes:** Create code for button command boxes that have more buttons but no light outputs. They will have more options for triggering actions in the mesh. These boxes should take precedence as lead controllers since they won't have lights.
+
+**TODO**
+
+The following categories are unrefined ideas and todo items. Keep the list titles even if all items have been removed.
+
+- **Change Requests:**
+* identify the lead controller with the bridge connected indicator on the top of both pages page. Something like Bridge Connected to (nickname fall back to mac address). keep the additional indicator on the user in the admin page. 
+* A list of tags can be shown from a button that doesn't change the page. those can be selected and added to the tags field. Typing tags also auto completes with known tags, unknown tags get added automatically. 
+* default scene selection is also a drop down with all known themes. 
+* add a button next to a controller to force the leader to switch to that controller. This should not prevent a reelection incase that controller goes down. Just acts like that controller won a new election. 
+* Add all active tags as buttons below the release soloist button on the control page that cause all controllers with that tag to be in solo mode. This should be done through the packet as, soloist to trumpet tags and those controllers should check the tag against their internal tag list and turn them selves on accordingly. I don't want individually addressed packets. Just one mass packet that lets everyone know who the target solo group is. 
+* Add a slider to change the relative brightness for non solo member at the top of the solo button area. This is relative to the soloist lighting which could have been controlled by the master dimmer above. 
+* Add the default config as a fall back (or potential target for control actions) to every controller and make it part of the firmware hash so controlers are out of date when it's missing. 
+* list a users defaults under their name and above their tags(omit any that are the same as the default)
+* List the show defaults in the top section of the admin page with an edit button that causes an edit section to open below the displayed settings. All the 
+* I want a toggle at the top of the actioins that switches between 
+* The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
+* remove the server + mesh log from the control page. Change to having a separate server log and mesh log on the admin page.
+* Only show the users name in the solo list upper section. remove their default options from the button. 
+* add a turn off all lights button to the control panel.
+* Keep the admin controller list in alphabetical order by nickname then put all controllers without a nickname in mac order below that with a small line break between lists. 
+
+- **Larger Ideas:**
+* I see were tracking when controllers go offline. I like that behavior on the main page. I also want that on the admin page to gray out missing controllers that have previously been seen this session. On the admin page make an option to remove that user from the show (do not delete that persons config). I want a deploy button next to each controller that opens a drop down that starts with a list of all known controllers for that show that are not responding then a line break and a list of all known configs in alphabetical order. If a new controller is brought online and a config is deployed, automatically remove the disconnected controller. If a config is deployed multiple times then those two controllers are allowed to operate as duplicates of each other. Put those in the list order based on which ever controller came online first. Controller configs should have a toggle that when true means they are important and should follow this missing controller behavior. False means they just disappear from the pages. Default should be any named controller is true, any unnamed controller is false.
+* I want separate show configs with a title and they have their own default themes, scenes, and colors (these are the generic fallbacks which i want to rename as show defaults. They should no longer change the hash and require a firmware update. They instead can be sent a simple update packet to the mesh this should automatically happen when the active show config is saved.) Dropdown menu at the top to select from different shows. Shows should have a list of known named controllers that are expected in those shows. They should not exclude any new controlers that might register and because active during that shows life cycle but give a reset button at the top of the controller list that would flush any disconnected controllers from the missing list for that specific session. The show config should always remember it's known list of controllers and show them as missing on the admin page. Shows can also have tags similar to controllers but they are not used in the same way. Just tag them for now. 
+* Make a separate config for adding and editing shows and controllers the page should start with show lists. Have an add button at the top of the section that opens a fresh show config as a section below and buttons with a save and discard. List all shows by name underneath with an edit button that opens the edit page under that show with save and discard. Add a delete button next to that with a confirm popup. Add a deploy button next to the show title
+
+- **Future Ideas:**
+* allow an optional starting position for the lights so they might skip the first n lights before displaying the pattern. Ending light is based on it's light position but provide a toggle to switch to end is Z lights ahead of start where number of lights includes the starting light. E.G. start 2, end 5 in default would turn on lights 2, 3, 4, 5 but in the other mode it would be 2, 3, 4, 5, 6. 
+
+
+- **BUG Report:**
+* Are the system hashes created in a consistent way? It seems like the hash might not use a consistent pattern with the used files and that is causing controllers to mistakenly report being out of date.
+* when pushing a new config send a turn off all lights signal to wipe any lights past what we are turning off. The strings may be longer than what we want to show at a given time. 
+* The ident and edit buttons are not formatted properly. the text extends off the button. 
+* clicking edit on a users config drops you down to the last part of the edit section so it extends up off the screen and needs to be scrolled to. Change to opening an edit section under the user being worked on. 
+* The everyone personal (change name to personal defaults) momentarily changes the controllers before they change back. I'm assuming the heartbeat is overriding the change because it doesn't understand how users could be doing something different. 
+* Sometimes the ident button is missing from a user on the admin page. 
+* Currently I see the bridge is connected and the controllers are receiving commands but the leader is not indicated by any user on the admin page. 
+* Next scene button on control panel is stuck on the starting theme. If i change theme then try to change scene i revert to the original theme. Swap the placement of the buttons and switch this behavior. Scenes are a subset of themes so scene changes stay on theme. 
+* a controller with fewer than 3 lights on its main string seems to prevent a firmware deployment. I assume it's because it's missing enough leds. This should not be blocking and a controller should be fine with missing some or all of the downloading lights. 
+
+- **Architecture Clarification Questions:**
+
+These are questions that I want clarification on over how they work so we can discuss if changes need to be made.
+
+* Is everything related to the user configs stored in the local database. I want to ensure were not adding traffic to the mesh by polling the admin page more than is necessary. I expect things like leader and controller count can all be picked up passively. 
+* Can the future phone app operate the server on its own and broadcast a hotspot from the app or would it be better to 
+* how do the heartbeats work between controllers? Do they all send one out or do they only send one out if it has not heard a different heartbeat in a while? I'm wondering if controllers can go a long time without sending a heartbeat and then appear offline to the control page even though they are working normally. Should we switch to a dedicated I'm alive heartbeat every 15 seconds (lets discuss timing) randomly spaced for each so we don't storm. 
