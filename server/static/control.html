@@ -23,8 +23,8 @@
   <div class="card">
     <h2>Show</h2>
     <div class="row">
-      <button data-needs-bridge onclick="act('next_scene')">Next Scene</button>
       <button data-needs-bridge onclick="act('next_theme')">Next Theme</button>
+      <button data-needs-bridge onclick="act('next_scene')">Next Scene</button>
     </div>
     <div class="row">
       <button data-needs-bridge onclick="act('random_scene')">Random Scene</button>
@@ -32,23 +32,20 @@
     </div>
     <div class="row">
       <button data-needs-bridge onclick="act('default_show')">Default Show</button>
-      <button data-needs-bridge onclick="act('default_user')">Everyone&rarr;Personal</button>
+      <button data-needs-bridge onclick="act('default_user')">Personal Defaults</button>
     </div>
     <label>Master Dim <span id="dimval">100</span>%</label>
     <input data-needs-bridge type="range" id="dimslider" min="0" max="100" value="100"
       oninput="el('dimval').textContent=this.value"
-      onchange="api.post('dim',{dim:this.value/100})">
+      onchange="onDimChange(this)">
+    <button data-needs-bridge id="lights-off-btn" class="wide" style="margin-top:8px"
+      onclick="toggleLightsOff()">Lights Off</button>
   </div>
 
   <div class="card">
     <h2>Soloist — tap a controller</h2>
     <div class="grid" id="grid"><div class="muted">Loading…</div></div>
     <button data-needs-bridge class="solo wide" style="margin-top:10px" onclick="act('release_solo')">Release Solo</button>
-  </div>
-
-  <div class="card">
-    <h2>Log</h2>
-    <div id="log"><div class="entry info">Loading…</div></div>
   </div>
 
   <script src="/static/common.js"></script>

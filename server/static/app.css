@@ -57,6 +57,7 @@ input[type=text], input[type=number], select {
 }
 .bridge-banner.hidden { display: none; }
 button:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+button.lights-off-active { background: var(--err); border: 1px solid var(--err); }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .tag { font-size: 11px; background: #243; color: #9d9; padding: 1px 6px; border-radius: 8px; }
 .strips { display: flex; gap: 6px; }

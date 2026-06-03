@@ -74,6 +74,8 @@ def _get_routes():
         '/api/tags':        lambda a, q: a.tags(),
         '/api/themes':      lambda a, q: a.themes(),
         '/api/log':         lambda a, q: a.log(),
+        '/api/server_log':  lambda a, q: a.server_log(),
+        '/api/mesh_log':    lambda a, q: a.mesh_log(),
         '/api/config':      lambda a, q: a.config(q.get('mac', [None])[0]),
     }
 

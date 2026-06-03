@@ -167,7 +167,8 @@ function refresh() {
     el('def_s1').value = d.unassigned_strip1_leds; el('def_s2').value = d.unassigned_strip2_leds; el('def_s3').value = d.unassigned_strip3_leds;
   }).catch(() => {});
 
-  api.get('log').then(renderLog).catch(() => {});
+  api.get('server_log').then(e => renderLog(e, 'server-log')).catch(() => {});
+  api.get('mesh_log').then(e => renderLog(e, 'mesh-log')).catch(() => {});
 }
 
 api.get('themes').then(t => { THEMES = t; clearEditor(); refresh(); });

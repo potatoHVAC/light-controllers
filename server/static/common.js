@@ -10,8 +10,8 @@ const api = {
 
 const el = (id) => document.getElementById(id);
 
-function renderLog(entries) {
-  const box = el('log');
+function renderLog(entries, targetId = 'log') {
+  const box = el(targetId);
   if (!box || !entries || !entries.length) return;
   box.innerHTML = entries.slice(-200)
     .map(e => `<div class="entry ${e.type}">${escapeHtml(e.msg)}</div>`).join('');

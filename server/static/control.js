@@ -1,6 +1,8 @@
 // Control panel: live status, show controls, and a soloist grid.
 let soloing = null;
 let bridgeConnected = false;
+let lightsOffActive = false;
+let dimBeforeLightsOff = 100;
 
 function act(action) {
   api.post(action).then(refresh);
@@ -13,9 +15,39 @@ function soloController(mac) {
   api.post('solo', { mac }).then(refresh);
 }
 
+function onDimChange(input) {
+  // Manual slider move releases lights-off without restoring the saved level.
+  if (lightsOffActive) releaseLightsOff(false);
+  api.post('dim', { dim: input.value / 100 });
+}
+
+function toggleLightsOff() {
+  if (lightsOffActive) {
+    releaseLightsOff(true);
+  } else {
+    dimBeforeLightsOff = parseInt(el('dimslider').value);
+    lightsOffActive = true;
+    el('lights-off-btn').classList.add('lights-off-active');
+    el('dimslider').value = 0;
+    el('dimval').textContent = '0';
+    api.post('dim', { dim: 0 });
+  }
+}
+
+function releaseLightsOff(restore) {
+  lightsOffActive = false;
+  el('lights-off-btn').classList.remove('lights-off-active');
+  if (restore) {
+    el('dimslider').value = dimBeforeLightsOff;
+    el('dimval').textContent = dimBeforeLightsOff;
+    api.post('dim', { dim: dimBeforeLightsOff / 100 });
+  }
+}
+
 function setBridgeState(connected) {
   bridgeConnected = connected;
   el('bridge-banner').classList.toggle('hidden', connected);
+  if (!connected && lightsOffActive) releaseLightsOff(false);
   document.querySelectorAll('[data-needs-bridge]').forEach(b => { b.disabled = !connected; });
 }
 
@@ -23,7 +55,7 @@ function refresh() {
   api.get('status').then(s => {
     el('theme').textContent = s.theme || '—';
     el('scene').textContent = s.scene || '—';
-    el('dim').textContent   = Math.round((s.dim || 1) * 100) + '%';
+    el('dim').textContent   = Math.round((s.dim || 0) * 100) + '%';
     el('count').textContent = s.controllers;
     el('bridge').innerHTML  = pill(s.connected, 'bridge connected', 'bridge offline');
     el('auto').innerHTML    = s.autonomous ? '<span class="pill warn">autonomous</span>' : '';
@@ -43,12 +75,9 @@ function refresh() {
       const onclick = clickable ? `onclick="soloController('${c.mac}')"` : '';
       return `<div class="${cls.join(' ')}" ${onclick}>
         <div class="name">${escapeHtml(c.nickname)}</div>
-        <div class="meta">${c.online ? (c.theme || '—') : 'offline'}</div>
       </div>`;
     }).join('');
   }).catch(() => {});
-
-  api.get('log').then(renderLog).catch(() => {});
 }
 
 setInterval(refresh, 2000);

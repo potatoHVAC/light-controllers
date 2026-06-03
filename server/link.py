@@ -135,7 +135,7 @@ class BridgeLink:
         elif mtype == 'log':
             lvl = msg.get('lvl', 'info')
             entry = 'warn' if lvl == 'warn' else ('err' if lvl == 'error' else 'info')
-            self._log.write(f"[{(sender or '?')[:8]}] [{msg.get('src','?')}] {msg.get('msg','')}", entry)
+            self._log.write(f"[{(sender or '?')[:8]}] [{msg.get('src','?')}] {msg.get('msg','')}", entry, source='mesh')
 
     # ── outbound ─────────────────────────────────────────────────────────────
 

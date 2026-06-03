@@ -75,6 +75,12 @@ class Api:
     def log(self):
         return self._log.entries()
 
+    def server_log(self):
+        return self._log.entries(source='server')
+
+    def mesh_log(self):
+        return self._log.entries(source='mesh')
+
     # ── show control ─────────────────────────────────────────────────────────
 
     def _theme(self, name):
@@ -85,6 +91,12 @@ class Api:
         cmd = {'type': 'change', 'theme': theme, 'scene': scene}
         if t and t['color']:
             cmd['color'] = t['color']
+        # Optimistically update mesh_state so a follow-up next_scene/next_theme
+        # call reads the correct theme without waiting for a controller heartbeat.
+        if theme is not None:
+            self._link.mesh_state['theme'] = theme
+        if scene is not None:
+            self._link.mesh_state['scene'] = scene
         return self._link.send_command(cmd)
 
     def next_scene(self):
@@ -128,6 +140,7 @@ class Api:
     def default_user(self):
         """Send every controller to its own stored personal default scene."""
         return self._link.send_command({'type': 'default'})
+
 
     # ── firmware / config push ───────────────────────────────────────────────
 

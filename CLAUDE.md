@@ -174,6 +174,7 @@ The following categories are unrefined ideas and todo items. Keep the list title
 * Only show the users name in the solo list upper section. remove their default options from the button. 
 * add a turn off all lights button to the control panel.
 * Keep the admin controller list in alphabetical order by nickname then put all controllers without a nickname in mac order below that with a small line break between lists. 
+* create a special controller tag named "leader" that when applied to a controller makes them a priority for handling the bridge
 
 - **Larger Ideas:**
 * I see were tracking when controllers go offline. I like that behavior on the main page. I also want that on the admin page to gray out missing controllers that have previously been seen this session. On the admin page make an option to remove that user from the show (do not delete that persons config). I want a deploy button next to each controller that opens a drop down that starts with a list of all known controllers for that show that are not responding then a line break and a list of all known configs in alphabetical order. If a new controller is brought online and a config is deployed, automatically remove the disconnected controller. If a config is deployed multiple times then those two controllers are allowed to operate as duplicates of each other. Put those in the list order based on which ever controller came online first. Controller configs should have a toggle that when true means they are important and should follow this missing controller behavior. False means they just disappear from the pages. Default should be any named controller is true, any unnamed controller is false.
@@ -182,6 +183,7 @@ The following categories are unrefined ideas and todo items. Keep the list title
 
 - **Future Ideas:**
 * allow an optional starting position for the lights so they might skip the first n lights before displaying the pattern. Ending light is based on it's light position but provide a toggle to switch to end is Z lights ahead of start where number of lights includes the starting light. E.G. start 2, end 5 in default would turn on lights 2, 3, 4, 5 but in the other mode it would be 2, 3, 4, 5, 6. 
+* add a shadow to the dimmer slidder that shows the previous location of the dim setting when the lights off toggle is engaged. 
 
 
 - **BUG Report:**
