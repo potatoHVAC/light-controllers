@@ -1,5 +1,6 @@
 // Admin: mesh stats, firmware deploy, controller list, config editor, defaults.
 let THEMES = [];
+let bridgeConnected = false;
 
 function themeOptions(sel, value) {
   sel.innerHTML = '<option value="">—</option>' +
@@ -7,11 +8,24 @@ function themeOptions(sel, value) {
   if (value) sel.value = value;
 }
 
-function deploy(action) {
-  const s = el('deploystatus'); s.textContent = 'Sending…';
+function setBridgeState(connected) {
+  bridgeConnected = connected;
+  el('bridge-banner').classList.toggle('hidden', connected);
+  document.querySelectorAll('[data-needs-bridge]').forEach(b => { b.disabled = !connected; });
+}
+
+function deployFirmware(action) {
+  const s = el('fwstatus'); s.textContent = 'Sending…';
   api.post(action).then(d => {
     s.textContent = (d.ok === false) ? 'Failed to reach bridge.'
       : (d.targets ? `Sent to ${d.targets.length} outdated controller(s).` : 'Sent to all.');
+  }).catch(() => s.textContent = 'Error.');
+}
+
+function deployConfigs() {
+  const s = el('cfgdeploystatus'); s.textContent = 'Sending…';
+  api.post('deploy_all_configs').then(d => {
+    s.textContent = `Pushed to ${d.pushed} assigned controller(s).`;
   }).catch(() => s.textContent = 'Error.');
 }
 
@@ -59,7 +73,7 @@ function saveConfig() {
   };
   el('cfgstatus').textContent = 'Saving…';
   api.post('save_config', body).then(() => {
-    el('cfgstatus').textContent = 'Saved and pushed.';
+    el('cfgstatus').textContent = bridgeConnected ? 'Saved and pushed.' : 'Saved (bridge offline — not pushed).';
     refresh();
   }).catch(() => el('cfgstatus').textContent = 'Error.');
 }
@@ -94,6 +108,7 @@ function refresh() {
     el('version').textContent = s.version;
     el('bridge').innerHTML   = pill(s.connected, 'bridge connected', 'bridge offline');
     el('auto').innerHTML     = s.autonomous ? '<span class="pill warn">autonomous</span>' : '';
+    setBridgeState(s.connected);
   }).catch(() => {});
 
   api.get('controllers').then(list => {
@@ -111,7 +126,7 @@ function refresh() {
             ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
           </div>
           <div class="row" style="margin:0;flex:0">
-            ${c.online ? `<button onclick="identify('${c.mac}')">Identify</button>` : ''}
+            ${c.online ? `<button ${bridgeConnected ? '' : 'disabled'} onclick="identify('${c.mac}')">Identify</button>` : ''}
             <button onclick="editController('${c.mac}')">Edit</button>
           </div>
         </div>

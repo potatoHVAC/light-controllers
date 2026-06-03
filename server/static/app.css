@@ -36,7 +36,8 @@ input[type=text], input[type=number], select {
   border: 1px solid var(--line); border-radius: 6px; font-size: 14px;
 }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
-.ctrl { padding: 12px 8px; border-radius: 6px; background: #222; border: 1px solid var(--line); text-align: center; cursor: pointer; }
+.ctrl { padding: 12px 8px; border-radius: 6px; background: #222; border: 1px solid var(--line); text-align: center; cursor: default; }
+.ctrl.clickable { cursor: pointer; }
 .ctrl.offline { opacity: .45; }
 .ctrl.leader { border-color: var(--accent); }
 .ctrl.soloing { background: var(--solo); }
@@ -49,6 +50,13 @@ input[type=text], input[type=number], select {
 .entry.ok { color: var(--ok); } .entry.info { color: var(--muted); }
 .entry.warn { color: var(--warn); } .entry.err { color: var(--err); }
 .muted { color: var(--muted); font-size: 12px; }
+.bridge-banner {
+  background: #2f0f0f; border: 1px solid var(--err); color: #f88;
+  padding: 10px 14px; border-radius: 8px; margin-bottom: 12px;
+  font-size: 13px; text-align: center;
+}
+.bridge-banner.hidden { display: none; }
+button:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .tag { font-size: 11px; background: #243; color: #9d9; padding: 1px 6px; border-radius: 8px; }
 .strips { display: flex; gap: 6px; }

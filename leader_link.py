@@ -10,16 +10,19 @@ from config import (BRIDGE_RETRY_INIT_MS, BRIDGE_RETRY_MAX_MS,
                     BRIDGE_AUTONOMOUS_AFTER_MS, BRIDGE_CAP_RETRIES)
 import log as _log
 
+_SELF_HB_MS = 5000   # how often the leader forwards its own state to the server
+
 
 class LeaderLink:
     def __init__(self, mesh):
-        self._mesh      = mesh
-        self.bridge     = None
-        self._retry_at  = 0                    # earliest time to try again
-        self._retry_ms  = BRIDGE_RETRY_INIT_MS  # backoff, doubles each failure
-        self._cap_fails = 0                    # failures at the cap interval
-        self._gave_up   = False                # stopped scanning until an alert
-        self._hint_ch   = None                 # channel from a hotspot_found alert
+        self._mesh        = mesh
+        self.bridge       = None
+        self._retry_at    = 0                    # earliest time to try again
+        self._retry_ms    = BRIDGE_RETRY_INIT_MS  # backoff, doubles each failure
+        self._cap_fails   = 0                    # failures at the cap interval
+        self._gave_up     = False                # stopped scanning until an alert
+        self._hint_ch     = None                 # channel from a hotspot_found alert
+        self._self_hb_at  = 0                    # last self-heartbeat forward time
 
     def make_bridge(self):
         """Create the bridge now (called if already leader at boot)."""
@@ -50,7 +53,10 @@ class LeaderLink:
         """Advance the bridge one step. Returns a server command to run, or None."""
         if controller.is_leader and not self._gave_up:
             self._advance_connect(now_ms)
-        return self._service(now_ms)
+        cmd = self._service(now_ms)
+        if controller.is_leader and self.connected():
+            self._maybe_forward_self(controller, now_ms)
+        return cmd
 
     # ── internals ────────────────────────────────────────────────────────────
 
@@ -102,6 +108,22 @@ class LeaderLink:
             self._retry_at  = time.ticks_add(now_ms, BRIDGE_RETRY_INIT_MS)
             return None
         return self.bridge.tick()
+
+    def _maybe_forward_self(self, controller, now_ms):
+        """Forward the leader's own state so it appears in the server registry."""
+        if time.ticks_diff(now_ms, self._self_hb_at) < _SELF_HB_MS:
+            return
+        self._self_hb_at = now_ms
+        self.bridge.forward({
+            'type':   'heartbeat',
+            'sender': self._mesh.mac,
+            'theme':  controller.theme,
+            'scene':  controller.scene,
+            'dim':    controller.dim,
+            'fw':     self._mesh._fw,
+            'cfg':    self._mesh._cfg,
+            'leader': True,
+        })
 
     def _flush_log_buffer(self):
         """Send the local log buffer so autonomous-lifecycle events that

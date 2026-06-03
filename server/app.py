@@ -55,6 +55,7 @@ def _post_routes():
         '/api/default_user':       lambda a, d: a.default_user(),
         '/api/deploy_all':         lambda a, d: a.deploy_all(),
         '/api/deploy_outdated':    lambda a, d: a.deploy_outdated(),
+        '/api/deploy_all_configs': lambda a, d: a.deploy_all_configs(),
         '/api/identify':           lambda a, d: a.identify(d['mac']),
         '/api/push_config':        lambda a, d: a.push_config(d['mac']),
         '/api/delete_config':      lambda a, d: a.delete_config(d['mac']),

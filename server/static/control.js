@@ -1,5 +1,6 @@
 // Control panel: live status, show controls, and a soloist grid.
-let soloing = null;   // mac currently selected as soloist (local hint)
+let soloing = null;
+let bridgeConnected = false;
 
 function act(action) {
   api.post(action).then(refresh);
@@ -7,8 +8,15 @@ function act(action) {
 }
 
 function soloController(mac) {
+  if (!bridgeConnected) return;
   soloing = mac;
   api.post('solo', { mac }).then(refresh);
+}
+
+function setBridgeState(connected) {
+  bridgeConnected = connected;
+  el('bridge-banner').classList.toggle('hidden', connected);
+  document.querySelectorAll('[data-needs-bridge]').forEach(b => { b.disabled = !connected; });
 }
 
 function refresh() {
@@ -19,6 +27,7 @@ function refresh() {
     el('count').textContent = s.controllers;
     el('bridge').innerHTML  = pill(s.connected, 'bridge connected', 'bridge offline');
     el('auto').innerHTML    = s.autonomous ? '<span class="pill warn">autonomous</span>' : '';
+    setBridgeState(s.connected);
   }).catch(() => {});
 
   api.get('controllers').then(list => {
@@ -29,7 +38,9 @@ function refresh() {
       if (!c.online) cls.push('offline');
       if (c.leader) cls.push('leader');
       if (c.mac === soloing) cls.push('soloing');
-      const onclick = c.online ? `onclick="soloController('${c.mac}')"` : '';
+      const clickable = c.online && bridgeConnected;
+      if (clickable) cls.push('clickable');
+      const onclick = clickable ? `onclick="soloController('${c.mac}')"` : '';
       return `<div class="${cls.join(' ')}" ${onclick}>
         <div class="name">${escapeHtml(c.nickname)}</div>
         <div class="meta">${c.online ? (c.theme || '—') : 'offline'}</div>

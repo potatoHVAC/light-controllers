@@ -96,6 +96,25 @@ def test_deploy_outdated_targets_only_stale(tmp_path):
     assert link.sent[-1] == ({'type': 'ota_update'}, 'old')
 
 
+def test_deploy_all_configs_pushes_each_assigned(tmp_path):
+    api, db, link = _api(tmp_path)
+    db.upsert_controller('mac1', nickname='Snare')
+    db.upsert_controller('mac2', nickname='Kick')
+    result = api.deploy_all_configs()
+    assert result['pushed'] == 2
+    targets = {t for _, t in link.sent}
+    assert targets == {'mac1', 'mac2'}
+    types = {cmd['type'] for cmd, _ in link.sent}
+    assert types == {'set_config'}
+
+
+def test_deploy_all_configs_empty(tmp_path):
+    api, _, link = _api(tmp_path)
+    result = api.deploy_all_configs()
+    assert result == {'pushed': 0}
+    assert link.sent == []
+
+
 def test_controllers_merges_registry_and_db(tmp_path):
     api, db, link = _api(tmp_path)
     db.upsert_controller('mac1', nickname='Snare')

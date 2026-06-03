@@ -9,6 +9,7 @@
 </head>
 <body>
   <h1>Admin <a href="/">&larr; control</a></h1>
+  <div id="bridge-banner" class="bridge-banner hidden">Bridge offline &mdash; deploy and identify disabled</div>
 
   <div class="card">
     <h2>Mesh</h2>
@@ -22,10 +23,14 @@
   <div class="card">
     <h2>Firmware deploy</h2>
     <div class="row">
-      <button class="warnbtn" onclick="deploy('deploy_outdated')">Deploy Outdated</button>
-      <button class="warnbtn" onclick="deploy('deploy_all')">Deploy All</button>
+      <button data-needs-bridge class="warnbtn" onclick="deployFirmware('deploy_outdated')">Deploy Outdated</button>
+      <button data-needs-bridge class="warnbtn" onclick="deployFirmware('deploy_all')">Deploy All</button>
     </div>
-    <div id="deploystatus" class="muted" style="margin-top:6px"></div>
+    <div id="fwstatus" class="muted" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:10px">
+      <button data-needs-bridge onclick="deployConfigs()">Deploy All Configs</button>
+    </div>
+    <div id="cfgdeploystatus" class="muted" style="margin-top:6px"></div>
   </div>
 
   <div class="card">

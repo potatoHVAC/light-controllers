@@ -132,7 +132,7 @@ class Api:
     # ── firmware / config push ───────────────────────────────────────────────
 
     def deploy_all(self):
-        self._log.write('Deploy requested — updating all controllers')
+        self._log.write('Firmware deploy requested — updating all controllers')
         return self._link.send_command({'type': 'ota_update'})
 
     def deploy_outdated(self):
@@ -142,6 +142,14 @@ class Api:
             self._link.send_command({'type': 'ota_update'}, target=mac)
         self._log.write(f'Deploy to {len(targets)} outdated controller(s)')
         return {'targets': targets}
+
+    def deploy_all_configs(self):
+        """Push every stored config to its controller over ESP-NOW."""
+        configs = self._db.list_controllers()
+        for cfg in configs:
+            self._push_config(cfg['mac'], cfg)
+        self._log.write(f'Config deploy to {len(configs)} assigned controller(s)')
+        return {'pushed': len(configs)}
 
     def identify(self, mac):
         return self._link.send_command({'type': 'identify'}, target=mac)

@@ -96,6 +96,18 @@ class Controller:
         return self._is_leader
 
     @property
+    def theme(self):
+        return self._theme_name()
+
+    @property
+    def scene(self):
+        return self._scene_name()
+
+    @property
+    def dim(self):
+        return self._dim
+
+    @property
     def ota_requested(self):
         """True if an ota_update message arrived. Clears on read."""
         flag = self._ota_requested
