@@ -50,6 +50,8 @@ input[type=text], input[type=number], select {
 .entry.ok { color: var(--ok); } .entry.info { color: var(--muted); }
 .entry.warn { color: var(--warn); } .entry.err { color: var(--err); }
 .muted { color: var(--muted); font-size: 12px; }
+.btn-group { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-group button { flex: none; white-space: nowrap; padding: 8px 12px; }
 .bridge-banner {
   background: #2f0f0f; border: 1px solid var(--err); color: #f88;
   padding: 10px 14px; border-radius: 8px; margin-bottom: 12px;

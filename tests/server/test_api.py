@@ -126,3 +126,28 @@ def test_controllers_merges_registry_and_db(tmp_path):
     assert rows['mac1']['nickname'] == 'Snare' and rows['mac1']['assigned'] is True
     assert rows['mac2']['nickname'] == short_mac('mac2') and rows['mac2']['assigned'] is False
     assert rows['mac1']['online'] is True
+
+
+def test_controllers_has_nickname_flag(tmp_path):
+    api, db, link = _api(tmp_path)
+    db.upsert_controller('mac1', nickname='Snare')
+    db.upsert_controller('mac2')          # assigned but no nickname
+    link._online = {}
+    rows = {c['mac']: c for c in api.controllers()}
+    assert rows['mac1']['has_nickname'] is True
+    assert rows['mac2']['has_nickname'] is False
+
+
+def test_controllers_sort_named_first_then_mac_order(tmp_path):
+    api, db, link = _api(tmp_path)
+    db.upsert_controller('mac3', nickname='Zebra')
+    db.upsert_controller('mac1', nickname='Alpha')
+    db.upsert_controller('mac2')          # unnamed
+    link._online = {}
+    result = api.controllers()
+    nicknames = [c['nickname'] for c in result]
+    # Named come first, alphabetically; unnamed (shown as short MAC) come after
+    assert nicknames.index('Alpha') < nicknames.index('Zebra')
+    assert nicknames.index('Zebra') < result.index(
+        next(c for c in result if c['mac'] == 'mac2')
+    )

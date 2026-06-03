@@ -1,6 +1,7 @@
 // Admin: mesh stats, firmware deploy, controller list, config editor, defaults.
 let THEMES = [];
 let bridgeConnected = false;
+let activeEditorMac = null;
 
 function themeOptions(sel, value) {
   sel.innerHTML = '<option value="">—</option>' +
@@ -14,6 +15,8 @@ function setBridgeState(connected) {
   document.querySelectorAll('[data-needs-bridge]').forEach(b => { b.disabled = !connected; });
 }
 
+// ── hash debug ──────────────────────────────────────────────────────────────
+
 function toggleHashDebug() {
   const box = el('hashdebug');
   if (box.style.display === 'none') {
@@ -26,18 +29,18 @@ function toggleHashDebug() {
           const note = f.excluded ? ' <span class="pill warn">excluded</span>'
                      : f.missing  ? ' <span class="pill off">missing</span>'
                      : '';
-          const hash = f.sha256 || '—';
           return `<tr style="border-bottom:1px solid var(--line)">
             <td style="padding:3px 6px 3px 0;color:var(--text)">${escapeHtml(f.path)}${note}</td>
-            <td style="padding:3px 0;color:var(--muted)">${hash}</td>
+            <td style="padding:3px 0;color:var(--muted)">${f.sha256 || '—'}</td>
           </tr>`;
-        }).join('') +
-        '</table>';
+        }).join('') + '</table>';
     }).catch(() => { el('hashdetail').textContent = 'Failed to load.'; });
   } else {
     box.style.display = 'none';
   }
 }
+
+// ── deploy ───────────────────────────────────────────────────────────────────
 
 function deployFirmware(action) {
   const s = el('fwstatus'); s.textContent = 'Sending…';
@@ -54,12 +57,71 @@ function deployConfigs() {
   }).catch(() => s.textContent = 'Error.');
 }
 
+// ── controller list ──────────────────────────────────────────────────────────
+
 function identify(mac) { api.post('identify', { mac }); }
 
+function renderControllers(list) {
+  const box = el('controllers');
+  if (!list.length) { box.innerHTML = '<div class="muted">None known.</div>'; return; }
+
+  const named   = list.filter(c => c.has_nickname);
+  const unnamed = list.filter(c => !c.has_nickname);
+
+  const renderCard = c => `
+    <div id="ctrl-${c.mac}" style="${c.online ? '' : 'opacity:0.45'}">
+      <div class="card" style="margin:0 0 8px 0;padding:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="min-width:0">
+            <span class="dot ${c.online ? 'online' : ''}"></span>
+            <b>${escapeHtml(c.nickname)}</b>
+            ${c.leader ? '<span class="pill on">leader</span>' : ''}
+            ${c.outdated && c.online ? '<span class="pill warn">outdated</span>' : ''}
+            <div class="muted">${c.mac}${c.fw ? ' · fw ' + c.fw : ''}</div>
+            ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
+          </div>
+          <div class="btn-group">
+            <button ${(!c.online || !bridgeConnected) ? 'disabled' : ''} onclick="identify('${c.mac}')">Identify</button>
+            <button onclick="editController('${c.mac}')">Edit</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  let html = named.map(renderCard).join('');
+  if (named.length && unnamed.length) {
+    html += '<div style="border-top:1px solid var(--line);margin:4px 0 12px"></div>';
+  }
+  html += unnamed.map(renderCard).join('');
+  box.innerHTML = html;
+
+  // Re-attach editor if one was open
+  if (activeEditorMac) {
+    const anchor = el('ctrl-' + activeEditorMac);
+    if (anchor) {
+      anchor.after(el('config-editor'));
+    } else {
+      closeEditor();
+    }
+  }
+}
+
+// ── inline editor ────────────────────────────────────────────────────────────
+
 function editController(mac) {
+  const editor = el('config-editor');
+
+  if (activeEditorMac === mac) {
+    closeEditor();
+    return;
+  }
+
+  activeEditorMac = mac;
+  el('cfgstatus').textContent = '';
+
   api.get('config?mac=' + mac).then(cfg => {
-    el('cfg_mac').value      = mac;
-    el('editortitle').textContent = 'Edit ' + mac;
+    el('cfg_mac').value = mac;
+    el('editortitle').textContent = 'Edit ' + (cfg && cfg.nickname ? cfg.nickname : mac);
     el('cfg_nickname').value = (cfg && cfg.nickname) || '';
     el('cfg_s1').value = cfg ? cfg.strip1_leds : 0;
     el('cfg_s2').value = cfg ? cfg.strip2_leds : 0;
@@ -68,16 +130,20 @@ function editController(mac) {
     themeOptions(el('cfg_theme'), cfg && cfg.default_theme);
     el('cfg_scene').value = (cfg && cfg.default_scene) || '';
     el('cfg_color').value = (cfg && cfg.default_color) || '';
-    window.scrollTo(0, document.body.scrollHeight);
+
+    const anchor = el('ctrl-' + mac);
+    if (anchor) {
+      anchor.after(editor);
+      editor.style.display = 'block';
+      editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   });
 }
 
-function clearEditor() {
-  ['cfg_mac', 'cfg_nickname', 'cfg_tags', 'cfg_scene', 'cfg_color'].forEach(i => el(i).value = '');
-  ['cfg_s1', 'cfg_s2', 'cfg_s3'].forEach(i => el(i).value = 0);
-  el('editortitle').textContent = 'Add config (enter a MAC)';
-  el('cfg_mac').value = '';
-  themeOptions(el('cfg_theme'), '');
+function closeEditor() {
+  el('config-editor').style.display = 'none';
+  el('editor-anchor').after(el('config-editor')); // park it back at anchor
+  activeEditorMac = null;
 }
 
 function saveConfig() {
@@ -99,6 +165,7 @@ function saveConfig() {
   el('cfgstatus').textContent = 'Saving…';
   api.post('save_config', body).then(() => {
     el('cfgstatus').textContent = bridgeConnected ? 'Saved and pushed.' : 'Saved (bridge offline — not pushed).';
+    closeEditor();
     refresh();
   }).catch(() => el('cfgstatus').textContent = 'Error.');
 }
@@ -106,8 +173,10 @@ function saveConfig() {
 function deleteConfig() {
   const mac = el('cfg_mac').value.trim();
   if (!mac || !confirm('Delete config for ' + mac + '?')) return;
-  api.post('delete_config', { mac }).then(() => { clearEditor(); refresh(); });
+  api.post('delete_config', { mac }).then(() => { closeEditor(); refresh(); });
 }
+
+// ── defaults ─────────────────────────────────────────────────────────────────
 
 function saveDefaults() {
   const fields = {
@@ -124,39 +193,24 @@ function saveDefaults() {
   api.post('defaults', { fields }).then(() => el('defstatus').textContent = 'Saved.');
 }
 
+// ── refresh ───────────────────────────────────────────────────────────────────
+
 function refresh() {
   api.get('status').then(s => {
-    el('count').textContent  = s.controllers;
-    el('theme').textContent  = s.theme || '—';
-    el('scene').textContent  = s.scene || '—';
-    el('dim').textContent    = Math.round((s.dim || 1) * 100) + '%';
+    el('count').textContent   = s.controllers;
+    el('theme').textContent   = s.theme || '—';
+    el('scene').textContent   = s.scene || '—';
+    el('dim').textContent     = Math.round((s.dim || 1) * 100) + '%';
     el('version').textContent = s.version;
-    el('bridge').innerHTML   = pill(s.connected, 'bridge connected', 'bridge offline');
-    el('auto').innerHTML     = s.autonomous ? '<span class="pill warn">autonomous</span>' : '';
+    el('bridge').innerHTML    = pill(s.connected, 'bridge connected', 'bridge offline');
+    el('auto').innerHTML      = s.autonomous ? '<span class="pill warn">autonomous</span>' : '';
     setBridgeState(s.connected);
   }).catch(() => {});
 
-  api.get('controllers').then(list => {
-    const box = el('controllers');
-    if (!list.length) { box.innerHTML = '<div class="muted">None known.</div>'; return; }
-    box.innerHTML = list.map(c => `
-      <div class="card" style="margin:0 0 8px 0;padding:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <span class="dot ${c.online ? 'online' : ''}"></span>
-            <b>${escapeHtml(c.nickname)}</b>
-            ${c.leader ? '<span class="pill on">leader</span>' : ''}
-            ${c.outdated && c.online ? '<span class="pill warn">outdated</span>' : ''}
-            <div class="muted">${c.mac}${c.fw ? ' · fw ' + c.fw : ''}</div>
-            ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
-          </div>
-          <div class="row" style="margin:0;flex:0">
-            ${c.online ? `<button ${bridgeConnected ? '' : 'disabled'} onclick="identify('${c.mac}')">Identify</button>` : ''}
-            <button onclick="editController('${c.mac}')">Edit</button>
-          </div>
-        </div>
-      </div>`).join('');
-  }).catch(() => {});
+  // Skip controller list rebuild while an editor is open to preserve its state.
+  if (!activeEditorMac) {
+    api.get('controllers').then(renderControllers).catch(() => {});
+  }
 
   api.get('defaults').then(d => {
     themeOptions(el('def_show_theme'), d.show_theme);
@@ -164,12 +218,14 @@ function refresh() {
     themeOptions(el('def_theme'), d.unassigned_theme);
     el('def_scene').value = d.unassigned_scene || '';
     el('def_color').value = d.unassigned_color || '';
-    el('def_s1').value = d.unassigned_strip1_leds; el('def_s2').value = d.unassigned_strip2_leds; el('def_s3').value = d.unassigned_strip3_leds;
+    el('def_s1').value = d.unassigned_strip1_leds;
+    el('def_s2').value = d.unassigned_strip2_leds;
+    el('def_s3').value = d.unassigned_strip3_leds;
   }).catch(() => {});
 
   api.get('server_log').then(e => renderLog(e, 'server-log')).catch(() => {});
   api.get('mesh_log').then(e => renderLog(e, 'mesh-log')).catch(() => {});
 }
 
-api.get('themes').then(t => { THEMES = t; clearEditor(); refresh(); });
+api.get('themes').then(t => { THEMES = t; refresh(); });
 setInterval(refresh, 3000);

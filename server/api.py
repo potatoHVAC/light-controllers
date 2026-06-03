@@ -41,6 +41,7 @@ class Api:
             out[mac] = {
                 'mac': mac,
                 'nickname': (cfg or {}).get('nickname') or short_mac(mac),
+                'has_nickname': bool((cfg or {}).get('has_custom_nickname')),
                 'assigned': cfg is not None,
                 'online': True,
                 'leader': info['leader'],
@@ -54,11 +55,16 @@ class Api:
                 out[cfg['mac']] = {
                     'mac': cfg['mac'],
                     'nickname': cfg.get('nickname') or short_mac(cfg['mac']),
+                    'has_nickname': bool(cfg.get('has_custom_nickname')),
                     'assigned': True, 'online': False, 'leader': False,
                     'theme': None, 'scene': None, 'dim': 1.0,
                     'fw': None, 'outdated': True, 'tags': cfg.get('tags', []),
                 }
-        return sorted(out.values(), key=lambda c: (not c['online'], c['nickname'].lower()))
+        # Named controllers first (alphabetical), then unnamed (MAC order).
+        return sorted(out.values(), key=lambda c: (
+            not c['has_nickname'],
+            c['nickname'].lower() if c['has_nickname'] else c['mac'].lower(),
+        ))
 
     def defaults(self):
         return self._db.get_defaults()

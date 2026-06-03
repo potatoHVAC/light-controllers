@@ -64,8 +64,10 @@ function refresh() {
 
   api.get('controllers').then(list => {
     const grid = el('grid');
-    if (!list.length) { grid.innerHTML = '<div class="muted">No controllers online.</div>'; return; }
-    grid.innerHTML = list.map(c => {
+    const named = list.filter(c => c.has_nickname);
+
+    if (!named.length) { grid.innerHTML = '<div class="muted">No controllers online.</div>'; return; }
+    grid.innerHTML = named.map(c => {
       const cls = ['ctrl'];
       if (!c.online) cls.push('offline');
       if (c.leader) cls.push('leader');

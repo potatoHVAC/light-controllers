@@ -14,16 +14,17 @@ MAX_STRIPS = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS controllers (
-    mac            TEXT PRIMARY KEY,
-    nickname       TEXT,
-    strip1_leds    INTEGER NOT NULL DEFAULT 0,
-    strip2_leds    INTEGER NOT NULL DEFAULT 0,
-    strip3_leds    INTEGER NOT NULL DEFAULT 0,
-    default_theme  TEXT,
-    default_scene  TEXT,
-    default_color  TEXT,
-    config_version INTEGER NOT NULL DEFAULT 1,
-    updated_at     REAL NOT NULL DEFAULT 0
+    mac                 TEXT PRIMARY KEY,
+    nickname            TEXT,
+    has_custom_nickname INTEGER NOT NULL DEFAULT 0,
+    strip1_leds         INTEGER NOT NULL DEFAULT 0,
+    strip2_leds         INTEGER NOT NULL DEFAULT 0,
+    strip3_leds         INTEGER NOT NULL DEFAULT 0,
+    default_theme       TEXT,
+    default_scene       TEXT,
+    default_color       TEXT,
+    config_version      INTEGER NOT NULL DEFAULT 1,
+    updated_at          REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tags (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,16 +57,29 @@ class Database:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
-        self._conn.execute(
-            "INSERT OR IGNORE INTO defaults (id) VALUES (1)")
+        self._conn.execute("INSERT OR IGNORE INTO defaults (id) VALUES (1)")
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self):
+        """Apply schema changes to existing databases."""
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(controllers)")}
+        if 'has_custom_nickname' not in cols:
+            self._conn.execute(
+                "ALTER TABLE controllers ADD COLUMN has_custom_nickname INTEGER NOT NULL DEFAULT 0")
+            # Backfill: controllers that already have a nickname were user-defined.
+            self._conn.execute(
+                "UPDATE controllers SET has_custom_nickname = 1 WHERE nickname IS NOT NULL AND nickname != ''")
 
     # ── controllers ──────────────────────────────────────────────────────────
 
     def upsert_controller(self, mac, **fields):
         """Create or update a controller config. Unknown fields are ignored.
-        Bumps config_version so controllers can detect the change."""
+        Bumps config_version so controllers can detect the change.
+        has_custom_nickname is set automatically from whether nickname is provided."""
         fields = {k: v for k, v in fields.items() if k in _CONFIG_FIELDS}
+        if 'nickname' in fields:
+            fields['has_custom_nickname'] = 1 if fields['nickname'] else 0
         row = self.get_controller(mac)
         if row is None:
             cols = ['mac', 'updated_at', 'config_version'] + list(fields)

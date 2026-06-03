@@ -14,6 +14,47 @@ def test_upsert_creates_and_bumps_version():
     assert c2['strip1_leds'] == 40 and c2['config_version'] == 2  # bumped
 
 
+def test_has_custom_nickname_flag():
+    db = _db()
+    # Set when nickname is provided
+    c = db.upsert_controller('m1', nickname='Snare')
+    assert c['has_custom_nickname'] == 1
+    # Clear when nickname is removed
+    c = db.upsert_controller('m1', nickname=None)
+    assert c['has_custom_nickname'] == 0
+    # Not set if nickname is never provided
+    c = db.upsert_controller('m2', strip1_leds=30)
+    assert c['has_custom_nickname'] == 0
+
+
+def test_migration_backfills_existing_nicknames():
+    """Existing rows with nicknames must get has_custom_nickname=1 on first open."""
+    import sqlite3, tempfile, os
+    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+        path = f.name
+    try:
+        # Simulate old DB without has_custom_nickname column
+        conn = sqlite3.connect(path)
+        conn.execute("""CREATE TABLE controllers (
+            mac TEXT PRIMARY KEY, nickname TEXT,
+            strip1_leds INTEGER NOT NULL DEFAULT 0,
+            strip2_leds INTEGER NOT NULL DEFAULT 0,
+            strip3_leds INTEGER NOT NULL DEFAULT 0,
+            default_theme TEXT, default_scene TEXT, default_color TEXT,
+            config_version INTEGER NOT NULL DEFAULT 1,
+            updated_at REAL NOT NULL DEFAULT 0)""")
+        conn.execute("INSERT INTO controllers (mac, nickname) VALUES ('m1', 'Snare')")
+        conn.execute("INSERT INTO controllers (mac, nickname) VALUES ('m2', NULL)")
+        conn.commit()
+        conn.close()
+
+        db = Database(path)
+        assert db.get_controller('m1')['has_custom_nickname'] == 1
+        assert db.get_controller('m2')['has_custom_nickname'] == 0
+    finally:
+        os.unlink(path)
+
+
 def test_ignores_unknown_fields():
     db = _db()
     c = db.upsert_controller('aa:bb', nickname='X', bogus='nope')

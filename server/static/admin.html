@@ -45,7 +45,8 @@
     <div id="controllers"><div class="muted">Loading…</div></div>
   </div>
 
-  <div class="card">
+  <div id="editor-anchor"></div>
+  <div id="config-editor" class="card" style="display:none">
     <h2 id="editortitle">Edit config</h2>
     <input type="hidden" id="cfg_mac">
     <label>Nickname</label><input type="text" id="cfg_nickname">
@@ -63,7 +64,7 @@
     <div class="row" style="margin-top:12px">
       <button onclick="saveConfig()">Save &amp; Push</button>
       <button class="danger" onclick="deleteConfig()">Delete</button>
-      <button onclick="clearEditor()">Clear</button>
+      <button onclick="closeEditor()">Close</button>
     </div>
     <div id="cfgstatus" class="muted" style="margin-top:6px"></div>
   </div>
