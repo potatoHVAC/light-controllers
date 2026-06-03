@@ -28,5 +28,14 @@ class PWM:
         self._duty = d
 
 
+class WDT:
+    def __init__(self, timeout=5000):
+        self.timeout = timeout
+        self.feeds = 0
+
+    def feed(self):
+        self.feeds += 1
+
+
 def reset():
     raise SystemExit('machine.reset')

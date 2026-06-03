@@ -66,13 +66,15 @@ def _ensure_dir(path):
             pass
 
 
-def _discover_server():
+def _discover_server(feed=None):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setblocking(False)
         sock.bind(('', UDP_PORT))
         start = time.ticks_ms()
         while time.ticks_diff(time.ticks_ms(), start) < DISCOVER_TIMEOUT_MS:
+            if feed:
+                feed()
             try:
                 data, addr = sock.recvfrom(64)
                 if data == DISCOVERY_MSG:
@@ -86,7 +88,7 @@ def _discover_server():
     return None
 
 
-def run(np=None):
+def run(np=None, feed=None):
     """Check for OTA server and download update if found.
 
     Files are downloaded into /update/ and verified before writing
@@ -96,6 +98,9 @@ def run(np=None):
 
     WiFi is always shut down before returning so ESP-NOW initialises
     cleanly regardless of how this function exits.
+
+    feed: optional watchdog-feed callback. The download outlasts the watchdog
+    timeout, so it is fed through the connect/discovery/download loops.
 
     Returns True if a verified update is staged, False otherwise.
     """
@@ -118,10 +123,12 @@ def run(np=None):
         sta.connect(OTA_SSID, OTA_PASSWORD)
         start = time.ticks_ms()
         while not sta.isconnected():
+            if feed:
+                feed()
             if time.ticks_diff(time.ticks_ms(), start) > WIFI_TIMEOUT_MS:
                 return False
 
-        server_ip = _discover_server()
+        server_ip = _discover_server(feed)
         if server_ip is None:
             return False
 
@@ -158,6 +165,8 @@ def run(np=None):
             if np:
                 _set_progress(np, _PROGRESS_CYCLE[i % 4])
 
+            if feed:
+                feed()
             path = f['path']
             update_path = UPDATE_DIR + '/' + path
             try:
@@ -169,6 +178,8 @@ def run(np=None):
                         if not chunk:
                             break
                         fh.write(chunk)
+                        if feed:
+                            feed()
                 resp.close()
             except Exception:
                 _rm_tree(UPDATE_DIR)

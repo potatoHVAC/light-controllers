@@ -23,6 +23,8 @@ sys.modules['network']   = fakes.network
 sys.modules['espnow']    = fakes.espnow
 sys.modules['uhashlib']  = fakes.uhashlib
 sys.modules['ubinascii'] = fakes.ubinascii
+# urequests is only used at runtime inside ota.run(); a bare stub lets ota import.
+sys.modules['urequests'] = types.ModuleType('urequests')
 
 # Fake secrets: a superset of stdlib secrets plus the device credential names,
 # so shadowing the stdlib module can't break anything that needs the real one.

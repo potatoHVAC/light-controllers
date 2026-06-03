@@ -1,6 +1,6 @@
 import time
 import os
-from machine import Pin
+from machine import Pin, WDT
 from strip import Strip
 from fixture import Fixture
 from button import Button
@@ -18,6 +18,19 @@ SECONDARY_PIN      = 22
 NUM_LEDS           = 3
 BUTTON_PIN         = 33
 BUTTON_SOLOIST_PIN = 27
+
+# Watchdog: resets the chip if the main loop stalls for this long (a hang, a
+# wedged I/O call). Must exceed the longest in-loop blocking op — the ~2s WiFi
+# scan — with margin. The OTA download is longer, so it feeds the watchdog itself.
+WDT_TIMEOUT_MS   = 8000
+# A persistent run of per-tick exceptions (bad state that won't clear) triggers a
+# recovery reboot. A handful of transient errors are logged and shrugged off.
+MAX_LOOP_ERRORS  = 50
+
+# Failure indicator: kept small and dim so it reads as a fault, not a show cue,
+# and never blasts a long strip at full power. First few LEDs at ~10% red.
+ERROR_LEDS  = 3
+ERROR_COLOR = (25, 0, 0)
 
 _UPDATE_READY = '/update_ready'
 _UPDATE_DIR   = '/update'
@@ -79,8 +92,11 @@ except OSError:
         pass
 
 
-def _run_ota():
-    """Black out the strips, then download and stage an OTA update and reboot."""
+def _run_ota(wdt=None):
+    """Black out the strips, then download and stage an OTA update and reboot.
+
+    The download blocks far longer than the watchdog timeout, so the watchdog's
+    feed is threaded into the download loop to keep it alive during the update."""
     import neopixel
     import machine
     # Lights off before the update so the rig goes dark instead of freezing on
@@ -91,12 +107,31 @@ def _run_ota():
         _off.write()
     np = neopixel.NeoPixel(Pin(PRIMARY_PIN), NUM_LEDS)
     from ota import run as ota_run
-    if ota_run(np=np):
+    if ota_run(np=np, feed=(wdt.feed if wdt else None)):
         machine.reset()
     del np
 
 
-def _execute_bridge_command(cmd, ctrl, now_ms):
+def _error_flash_and_reset(reason):
+    """Last resort: flash a small, dim red fault marker on the first few LEDs of
+    the primary strip, then reset to recover. Used for fatal or persistent errors."""
+    try:
+        import neopixel
+        np = neopixel.NeoPixel(Pin(PRIMARY_PIN), NUM_LEDS)
+        n = min(ERROR_LEDS, NUM_LEDS)
+        for _ in range(3):
+            np.fill((0, 0, 0))
+            for i in range(n):
+                np[i] = ERROR_COLOR
+            np.write(); time.sleep_ms(150)
+            np.fill((0, 0, 0)); np.write(); time.sleep_ms(150)
+    except Exception:
+        pass
+    import machine
+    machine.reset()
+
+
+def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
     """Execute a command received from the laptop bridge."""
     cmd_type = cmd.get('type')
     if cmd_type == 'change':
@@ -123,7 +158,7 @@ def _execute_bridge_command(cmd, ctrl, now_ms):
     elif cmd_type == 'ota_update':
         if ctrl._network:
             ctrl._network.send_ota_update()
-        _run_ota()
+        _run_ota(wdt)
 
 
 def main():
@@ -148,34 +183,52 @@ def main():
     _log.set_mesh(mesh)
     controller = Controller(fixture, themes, network=mesh)
 
-    # Sync/election phase. Non-blocking per tick, but we spin here until it
-    # completes — this runs before the main loop, so a tight loop is fine.
+    # Watchdog resets the chip if a tick stalls. Created here (after the A/B
+    # swap and module setup, which run before main() and can't feed it) and fed
+    # in both the sync spin and the main loop. The sync phase may legitimately
+    # wait a long time, so it feeds the watchdog too — only a genuine hang resets.
+    wdt = WDT(timeout=WDT_TIMEOUT_MS)
+
+    # Sync/election phase. Non-blocking per tick; we spin here until it completes.
     controller.begin(time.ticks_ms())
     while not controller.tick_start(time.ticks_ms(), button.update(time.ticks_ms()) is not None):
-        pass
+        wdt.feed()
 
     link     = LeaderLink(mesh)
     recovery = FollowerRecovery(time.ticks_ms())
     if controller.is_leader:
         link.make_bridge()
 
+    errors = 0
+
     while True:
-        now_ms = time.ticks_ms()
+        wdt.feed()
+        try:
+            now_ms = time.ticks_ms()
 
-        _handle_buttons(controller, button, soloist_button, now_ms)
+            _handle_buttons(controller, button, soloist_button, now_ms)
 
-        received = controller.update(now_ms)
-        link.forward(received)
-        link.on_alert(controller, received, now_ms)
+            received = controller.update(now_ms)
+            link.forward(received)
+            link.on_alert(controller, received, now_ms)
 
-        cmd = link.tick(controller, now_ms)
-        if cmd:
-            _execute_bridge_command(cmd, controller, now_ms)
+            cmd = link.tick(controller, now_ms)
+            if cmd:
+                _execute_bridge_command(cmd, controller, now_ms, wdt)
 
-        recovery.tick(controller, mesh, now_ms)
+            recovery.tick(controller, mesh, now_ms)
 
-        if controller.ota_requested:
-            _run_ota()
+            if controller.ota_requested:
+                _run_ota(wdt)
+
+            errors = 0
+        except Exception as e:
+            # One bad tick shouldn't drop the show: log and carry on. A
+            # persistent run of errors means broken state — reboot to recover.
+            errors += 1
+            _log.write('main', 'loop error: ' + str(e), level='error')
+            if errors >= MAX_LOOP_ERRORS:
+                _error_flash_and_reset('persistent loop errors')
 
 
 def _handle_buttons(controller, button, soloist_button, now_ms):
@@ -192,4 +245,9 @@ def _handle_buttons(controller, button, soloist_button, now_ms):
         controller.release_solo()
 
 
-main()
+try:
+    main()
+except Exception as _e:
+    # Fatal error (setup failure, or something that escaped the loop guard).
+    # Flash red and reset rather than dropping to a dark REPL on stage.
+    _error_flash_and_reset(str(_e))
