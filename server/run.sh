@@ -24,6 +24,7 @@ fi
 docker build -f server/Dockerfile -t lightrig-server . && \
   docker run --rm \
     --network host \
+    --user "$(id -u):$(id -g)" \
     -v "$(pwd):/firmware" \
     -e FIRMWARE_DIR=/firmware \
     -w /firmware \
