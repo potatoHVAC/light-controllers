@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111">
+  <link rel="stylesheet" href="/static/app.css">
+  <title>Light Controllers — Admin</title>
+</head>
+<body>
+  <h1>Admin <a href="/">&larr; control</a></h1>
+
+  <div class="card">
+    <h2>Mesh</h2>
+    <div class="status">
+      Controllers <b id="count">—</b> &nbsp; <span id="bridge"></span> <span id="auto"></span><br>
+      Theme <b id="theme">—</b> &nbsp; Scene <b id="scene">—</b> &nbsp; Dim <b id="dim">—</b><br>
+      Firmware <b id="version" class="muted">—</b>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Firmware deploy</h2>
+    <div class="row">
+      <button class="warnbtn" onclick="deploy('deploy_outdated')">Deploy Outdated</button>
+      <button class="warnbtn" onclick="deploy('deploy_all')">Deploy All</button>
+    </div>
+    <div id="deploystatus" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Controllers</h2>
+    <div id="controllers"><div class="muted">Loading…</div></div>
+  </div>
+
+  <div class="card">
+    <h2 id="editortitle">Edit config</h2>
+    <input type="hidden" id="cfg_mac">
+    <label>Nickname</label><input type="text" id="cfg_nickname">
+    <label>Strip LED counts (0 = none)</label>
+    <div class="strips">
+      <input type="number" id="cfg_s1" min="0" placeholder="strip 1">
+      <input type="number" id="cfg_s2" min="0" placeholder="strip 2">
+      <input type="number" id="cfg_s3" min="0" placeholder="strip 3">
+    </div>
+    <label>Tags (comma separated — e.g. percussion, low)</label>
+    <input type="text" id="cfg_tags" placeholder="agnostic groupings">
+    <label>Default theme</label><select id="cfg_theme"></select>
+    <label>Default scene</label><input type="text" id="cfg_scene" placeholder="scene name">
+    <label>Default color (hex, optional)</label><input type="text" id="cfg_color" placeholder="#ff0000">
+    <div class="row" style="margin-top:12px">
+      <button onclick="saveConfig()">Save &amp; Push</button>
+      <button class="danger" onclick="deleteConfig()">Delete</button>
+      <button onclick="clearEditor()">Clear</button>
+    </div>
+    <div id="cfgstatus" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Defaults for unassigned controllers</h2>
+    <label>Show theme</label><select id="def_show_theme"></select>
+    <label>Show scene</label><input type="text" id="def_show_scene">
+    <label>Unassigned default theme</label><select id="def_theme"></select>
+    <label>Unassigned default scene</label><input type="text" id="def_scene">
+    <label>Unassigned default color (hex)</label><input type="text" id="def_color">
+    <label>Unassigned strip LED counts</label>
+    <div class="strips">
+      <input type="number" id="def_s1" min="0">
+      <input type="number" id="def_s2" min="0">
+      <input type="number" id="def_s3" min="0">
+    </div>
+    <button class="wide" style="margin-top:12px" onclick="saveDefaults()">Save Defaults</button>
+    <div id="defstatus" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Server + mesh log</h2>
+    <div id="log"><div class="entry info">Loading…</div></div>
+  </div>
+
+  <script src="/static/common.js"></script>
+  <script src="/static/admin.js"></script>
+</body>
+</html>

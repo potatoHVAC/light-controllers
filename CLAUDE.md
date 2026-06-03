@@ -82,6 +82,8 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Patterns must only write to strips via the public API** — `strip[i]`, `strip.fill()`, `strip.draw_pulse()`. Never access `strip._np` directly. The strip maintains a separate unscaled buffer so network dim scaling is applied once at show() time without compounding across ticks. Bypassing the public API breaks this.
 
+- **The main loop must feed the hardware watchdog every iteration.** A stalled tick resets the chip (`WDT_TIMEOUT_MS`, ~8s). Any in-loop operation that can block longer than the timeout must feed the watchdog itself — the OTA download does this via a `feed` callback. The loop body is wrapped so a transient per-tick exception is logged and skipped; a persistent run of errors or a fatal error shows a small dim fault marker (first few LEDs at ~10% red) and resets rather than dropping to a dark REPL on stage. Keep any failure indicator small and dim — never blast a full strip at full brightness.
+
 ## Code
 
 - **Language:** MicroPython
@@ -90,6 +92,29 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **ESP-NOW:** `espnow` module (built into MicroPython ESP32 port)
 - HSV color math written in-house (no FastLED equivalent exists for MicroPython)
 - Controllers use a unified `LightRig` abstraction so network logic is decoupled from light type
+
+## Server
+
+The laptop/phone server is a stdlib-only Python package under `server/` (no web
+framework — it runs zero-install on a show laptop or in Docker). Run it with
+`python3 -m server.app` (or `./server/run.sh`, `./server/run.sh --local`).
+
+- `app.py` — HTTP dispatch (route tables), static serving, OTA endpoints, wiring.
+- `db.py` — SQLite (`server/lightrig.db`): controller configs, agnostic tags, defaults.
+- `firmware.py` — OTA manifest + a version hash over firmware files (excludes
+  `secrets.py` and the per-device config). `OTA_FILES` mirrors `deploy.sh`.
+- `link.py` — the bridge UDP comms, signed commands (with optional `target` MAC
+  for per-controller commands), and the live controller registry / mesh state.
+- `api.py` — control + admin + config logic (testable, no HTTP).
+- `serverlog.py` — bounded log shown on both pages.
+- `static/` — `control.html` (the default page `/`), `admin.html` (`/admin`),
+  shared `app.css` / `common.js`. Vanilla JS, mobile-first, PWA manifest. No build step.
+
+Per-controller config lives in `device_config.json` on the device (strip layout,
+nickname, personal default theme/scene/color) — it is NOT firmware, survives OTA,
+and is pushed via a targeted `set_config` command (the controller saves it and
+reboots to apply). Controllers report their firmware version and config version
+in heartbeats so the admin page can flag outdated units.
 
 ## Long-Term Roadmap (not immediate priority)
 
@@ -103,15 +128,15 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Beat-sync patterns:** Patterns that accept BPM as a parameter and pulse on the beat. BPM set manually or broadcast from the main controller.
 
-- **OTA versioning:** Add a version field to the OTA manifest. Controllers compare against a locally stored version and skip the download if already up to date.
+- **OTA passive self-update:** The server now hashes the firmware into a version, the OTA manifest carries it, controllers store it (`firmware_version`) and report it, and the admin page flags/deploys outdated units. Remaining: have a controller compare versions on boot and self-update without a push (the push deploy stays as the override).
 
 - **Error mode display:** Use the addressable strips themselves as the error indicator. On network failure, boot failure, or other fault conditions, display a distinct error pattern on the strips rather than a separate status LED.
 
-- **Web/phone show control interface:** Expand the OTA server into a full show control panel accessible from a browser or phone. Allows a director to change themes, scenes, and dim levels across the rig without touching any controller. Extends the existing server infrastructure rather than replacing it.
+- **Per-member fixture configs — remaining work:** The DB stores per-controller nickname, strip lengths, agnostic tags, and a personal default theme/scene/color; the `default` packet sends everyone to their stored default; `set_config` pushes a config to one controller. Still to do: pattern tuning per member, favorites (deliberately deferred), and **tag/group commands** (e.g. "solo all drummers", "dim all horns") — the tag↔MAC mapping exists in `db.macs_with_tag`, but no API/command turns a tag into a targeted group action yet.
 
-- **Per-member fixture configs:** Each band member has a custom config (strip lengths, pattern tuning) sized to their instrument. Stored in the server database alongside member metadata (name, instrument, role, grouping tags like "drummers" or "horns"). Used for quick controller swap-outs and for group commands — e.g. dim all horns, solo all drummers. Each member config includes a default scene (theme + scene name) that replaces the solid color fallback for unknown themes. A mesh packet type `default` should send every controller to its own stored default scene — useful for resetting the rig to a known per-member state between songs.
+- **Config auto-sync on check-in:** Controllers report their config version in heartbeats, and saving a config pushes `set_config` to that controller. Still to do: when a controller checks in reporting an older config version than the DB holds (e.g. it was offline when the config changed), the server should push the current config automatically rather than only on edit.
 
-- **Controller identity and assignment:** Controllers need a persistent identity (short ID derived from MAC) that can be assigned to a band member in the database. Enables the server to push the right fixture config when a controller joins, and to target commands at specific members or groups rather than broadcasting to all.
+- **Controller identity and assignment — done:** Controllers are identified by MAC (short form = last 6 hex). The admin page lists online + assigned controllers, pushes configs, and can `identify` a unit (orange blink). Remaining identity work is folded into the two items above.
 
 - **Sync wait fade to black:** While a controller waits for a heartbeat at boot (before it has synced to the mesh), slowly fade the strips to black rather than keeping them dark and static. Gives a visual indication that the controller is alive and waiting. Fade should complete before the controller would start showing a default or fallback state.
 
@@ -119,24 +144,12 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 
 - **Independent mode:** Dual button hold toggles a controller in and out of independent mode. In independent mode the controller ignores incoming mesh commands and does not broadcast its own changes — it runs its own patterns locally without affecting or being affected by the group. On exit, the controller re-syncs to the current mesh state. The control panel should also be able to pull a controller out of independent mode remotely.
 
-- **Control panel debug page:** A `/debug` page on the server that displays a live log of mesh packets forwarded by the bridge — sender MAC, message type, theme/scene/dim, sequence number, and timestamp. Failed bridge commands should appear as warnings in this log. The server already buffers log entries; just add packet forwarding to the log and build the debug UI on top.
+- **Admin page — structured packet view:** The `/admin` page exists (mesh stats, firmware version + deploy all/outdated, controller list with identify + config editor, defaults, combined server+mesh log). Remaining: a structured per-packet stream — sender MAC, message type, theme/scene/dim, sequence number, timestamp — rather than just log lines.
 
 - **Monitoring and metrics:** Track per-controller health over time — last seen timestamp, packet counts, command success/failure rates, leader election history. Exportable for post-show review. Groundwork for alerting when a controller goes silent mid-show.
-
-- **OTA versioning and passive updates:** Add a version field to the OTA manifest and store the current version on each controller. Controllers would passively check for a newer version on boot and self-update without needing a push command. The push deploy button stays as an override. Versioning also prevents unnecessary downloads when nothing has changed.
 
 - **Rename LIGHTRIG_OTA network:** The shared hotspot SSID is still named `LIGHTRIG_OTA` but now serves both OTA updates and show control. Rename to something more generic (e.g. `LIGHTRIG`) once we decide on a final name.
 
 - **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
 
 - **Button Boxes:** Create code for button command boxes that have more buttons but no light outputs. They will have more options for triggering actions in the mesh. These boxes should take precident as lead controllers since they won't have lights.
-
-- **Bug List:** 
-* add a lights off command before starting an update.
-
-- **Change Request:**
-* 1 second fade back to full bright when turning off solo mode
-* server button for solo mode is only solo mode off that sends the release command
-* change download complete visual to 3 green lights flashing at 300 ms intervals 3 times. 
-* server log and mesh log on a debug(-name) page along with the push firmware button.
-* display count of known controlers in the mesh. 

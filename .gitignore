@@ -1,2 +1,7 @@
 secrets.py
 __pycache__/
+.venv/
+server/lightrig.db
+device_config.json
+firmware_version
+*.pyc

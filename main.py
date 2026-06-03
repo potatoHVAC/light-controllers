@@ -1,23 +1,40 @@
 import time
 import os
-from machine import Pin
+from machine import Pin, WDT
 from strip import Strip
 from fixture import Fixture
 from button import Button
 from themes import RandomTheme, ColorTheme
-from config import (THEMES as _THEME_DEFS, DEFAULT_CHANNEL,
-                    BRIDGE_RETRY_INIT_MS, BRIDGE_RETRY_MAX_MS,
-                    BRIDGE_AUTONOMOUS_AFTER_MS, BRIDGE_CAP_RETRIES)
+from config import THEMES as _THEME_DEFS
 from controller import Controller
 from mesh import Mesh
+from leader_link import LeaderLink
+from recovery import FollowerRecovery
 import log as _log
 
-# LED Brain: 2 strips × 3 LEDs
-PRIMARY_PIN        = 26
-SECONDARY_PIN      = 22
-NUM_LEDS           = 3
+# Strip data pins (up to 3). The number of LEDs on each comes from the
+# per-controller device config; the default layout below is used when there is
+# no config yet (the test rig: two short strips).
+STRIP_PINS         = (26, 22, 21)
+PRIMARY_PIN        = STRIP_PINS[0]
+SECONDARY_PIN      = STRIP_PINS[1]
+NUM_LEDS           = 3            # default per-strip length when unconfigured
 BUTTON_PIN         = 33
 BUTTON_SOLOIST_PIN = 27
+_FW_VERSION_FILE   = 'firmware_version'
+
+# Watchdog: resets the chip if the main loop stalls for this long (a hang, a
+# wedged I/O call). Must exceed the longest in-loop blocking op — the ~2s WiFi
+# scan — with margin. The OTA download is longer, so it feeds the watchdog itself.
+WDT_TIMEOUT_MS   = 8000
+# A persistent run of per-tick exceptions (bad state that won't clear) triggers a
+# recovery reboot. A handful of transient errors are logged and shrugged off.
+MAX_LOOP_ERRORS  = 50
+
+# Failure indicator: kept small and dim so it reads as a fault, not a show cue,
+# and never blasts a long strip at full power. First few LEDs at ~10% red.
+ERROR_LEDS  = 3
+ERROR_COLOR = (25, 0, 0)
 
 _UPDATE_READY = '/update_ready'
 _UPDATE_DIR   = '/update'
@@ -79,18 +96,67 @@ except OSError:
         pass
 
 
-def _run_ota():
-    """Download and stage an OTA update, then reboot to apply it."""
+def _strip_layout():
+    """[(pin, num_leds), ...] for this controller — from device config, or the
+    default test-rig layout when unconfigured."""
+    import device_config
+    strips = device_config.load().get('strips')
+    if strips:
+        return [(STRIP_PINS[i], n) for i, n in enumerate(strips[:len(STRIP_PINS)]) if n]
+    return [(PRIMARY_PIN, NUM_LEDS), (SECONDARY_PIN, NUM_LEDS)]
+
+
+def _blackout(layout):
+    import neopixel
+    for pin, leds in layout:
+        np = neopixel.NeoPixel(Pin(pin), leds)
+        np.fill((0, 0, 0))
+        np.write()
+
+
+def _primary(layout):
+    """The primary strip's (pin, leds) for status/fault indicators."""
+    return layout[0] if layout else (PRIMARY_PIN, NUM_LEDS)
+
+
+def _run_ota(wdt=None):
+    """Black out the strips, then download and stage an OTA update and reboot.
+
+    The download blocks far longer than the watchdog timeout, so the watchdog's
+    feed is threaded into the download loop to keep it alive during the update."""
     import neopixel
     import machine
-    np = neopixel.NeoPixel(Pin(PRIMARY_PIN), NUM_LEDS)
+    layout = _strip_layout()
+    _blackout(layout)   # lights off before the update, not frozen on last frame
+    pin, leds = _primary(layout)
+    np = neopixel.NeoPixel(Pin(pin), leds)
     from ota import run as ota_run
-    if ota_run(np=np):
+    if ota_run(np=np, feed=(wdt.feed if wdt else None)):
         machine.reset()
     del np
 
 
-def _execute_bridge_command(cmd, ctrl, now_ms):
+def _error_flash_and_reset(reason):
+    """Last resort: flash a small, dim red fault marker on the first few LEDs of
+    the primary strip, then reset to recover. Used for fatal or persistent errors."""
+    try:
+        import neopixel
+        pin, leds = _primary(_strip_layout())
+        np = neopixel.NeoPixel(Pin(pin), leds)
+        n = min(ERROR_LEDS, leds)
+        for _ in range(3):
+            np.fill((0, 0, 0))
+            for i in range(n):
+                np[i] = ERROR_COLOR
+            np.write(); time.sleep_ms(150)
+            np.fill((0, 0, 0)); np.write(); time.sleep_ms(150)
+    except Exception:
+        pass
+    import machine
+    machine.reset()
+
+
+def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
     """Execute a command received from the laptop bridge."""
     cmd_type = cmd.get('type')
     if cmd_type == 'change':
@@ -115,16 +181,50 @@ def _execute_bridge_command(cmd, ctrl, now_ms):
         else:
             ctrl.release_solo()
     elif cmd_type == 'ota_update':
+        target = cmd.get('target')
         if ctrl._network:
             ctrl._network.send_ota_update()
-        _run_ota()
+        if target is None or (ctrl._network and target == ctrl._network.mac):
+            _run_ota(wdt)
+    elif cmd_type == 'identify':
+        target = cmd.get('target')
+        if ctrl._network:
+            ctrl._network.send_identify(target)
+        if target is None or (ctrl._network and target == ctrl._network.mac):
+            ctrl.apply_identify(now_ms)
+    elif cmd_type == 'solo_request':
+        target = cmd.get('target')
+        if ctrl._network:
+            ctrl._network.send_solo_request(target)
+        if target is None or (ctrl._network and target == ctrl._network.mac):
+            ctrl.solo()
+    elif cmd_type == 'default':
+        if ctrl._network:
+            ctrl._network.send_default()
+        ctrl.apply_default(now_ms)
+    elif cmd_type == 'set_config':
+        target = cmd.get('target')
+        if ctrl._network:
+            ctrl._network.send_set_config(target, cmd.get('config'))
+        if target is None or (ctrl._network and target == ctrl._network.mac):
+            ctrl.apply_set_config(cmd.get('config'))
+
+
+def _read_firmware_version():
+    try:
+        with open(_FW_VERSION_FILE) as f:
+            return f.read().strip() or None
+    except Exception:
+        return None
 
 
 def main():
-    strips = [
-        Strip("primary",   PRIMARY_PIN,   NUM_LEDS),
-        Strip("secondary", SECONDARY_PIN, NUM_LEDS),
-    ]
+    import device_config
+    dev = device_config.load()
+
+    layout = _strip_layout()
+    names = ('primary', 'secondary', 'tertiary')
+    strips = [Strip(names[i], pin, leds) for i, (pin, leds) in enumerate(layout)]
     fixture = Fixture(strips)
     button        = Button(BUTTON_PIN)
     soloist_button = Button(BUTTON_SOLOIST_PIN)
@@ -139,152 +239,79 @@ def main():
     fixture.clear()
 
     mesh = Mesh()
+    mesh.set_versions(_read_firmware_version(), device_config.version(dev))
     _log.set_mesh(mesh)
-    controller = Controller(fixture, themes, network=mesh)
-    controller.start(time.ticks_ms(), button=button)
+    controller = Controller(fixture, themes, network=mesh, personal_default=dev)
 
-    # Bridge connection is non-blocking — tick_connect() advances the state
-    # machine one step per loop iteration. The leader stays leader regardless
-    # of bridge status. Backoff ramps up to the cap, declares the mesh
-    # autonomous, then gives up after BRIDGE_CAP_RETRIES cap-interval failures.
-    _bridge       = None
-    _retry_at     = 0                     # 0 = attempt immediately
-    _retry_ms     = BRIDGE_RETRY_INIT_MS  # current backoff, doubles on failure
-    _cap_fails    = 0                     # failures at the cap interval
-    _gave_up      = False                 # stopped scanning until a hotspot alert
-    _hint_ch      = None                  # known channel from a hotspot_found alert
-    _wake_scanned = False                 # one-shot boot scan when mesh autonomous
+    # Watchdog resets the chip if a tick stalls. Created here (after the A/B
+    # swap and module setup, which run before main() and can't feed it) and fed
+    # in both the sync spin and the main loop. The sync phase may legitimately
+    # wait a long time, so it feeds the watchdog too — only a genuine hang resets.
+    wdt = WDT(timeout=WDT_TIMEOUT_MS)
 
+    # Sync/election phase. Non-blocking per tick; we spin here until it completes.
+    controller.begin(time.ticks_ms())
+    while not controller.tick_start(time.ticks_ms(), button.update(time.ticks_ms()) is not None):
+        wdt.feed()
+
+    link     = LeaderLink(mesh)
+    recovery = FollowerRecovery(time.ticks_ms())
     if controller.is_leader:
-        from bridge import Bridge
-        _bridge = Bridge(mesh)
+        link.make_bridge()
 
-    # Orphan recovery: a follower that hears nothing for this long has likely
-    # been left on a stale channel after the mesh migrated. It rescans for the
-    # hotspot, re-pins, and re-announces. The leader never does this (a lone
-    # leader is silent by design); only non-leaders, and only when truly silent.
-    ORPHAN_SILENCE_MS = 15000
-    _last_recovery_ms = time.ticks_ms()
-
-    # The wake scan only fires for a freshly-booted controller (within this
-    # window), so a long-running follower does not scan when the leader flips
-    # to autonomous at the 5-minute mark — that would freeze every follower at once.
-    WAKE_SCAN_WINDOW_MS = 30000
-    _boot_ms = time.ticks_ms()
+    errors = 0
 
     while True:
-        now_ms = time.ticks_ms()
+        wdt.feed()
+        try:
+            now_ms = time.ticks_ms()
 
-        event = button.update(now_ms)
-        if event == 'short':
-            controller.next_scene(now_ms)
-        elif event == 'long':
-            controller.next_theme(now_ms)
+            _handle_buttons(controller, button, soloist_button, now_ms)
 
-        solo_event = soloist_button.update(now_ms)
-        if solo_event == 'short':
-            controller.solo()
-        elif solo_event == 'long':
-            controller.release_solo()
+            received = controller.update(now_ms)
+            link.forward(received)
+            link.on_alert(controller, received, now_ms)
 
-        received = controller.update(now_ms)
-        if _bridge and _bridge.is_connected() and received:
-            _bridge.forward(received)
+            cmd = link.tick(controller, now_ms)
+            if cmd:
+                _execute_bridge_command(cmd, controller, now_ms, wdt)
 
-        # A follower found a hotspot and alerted the leader — resume connecting
-        # (even if we had given up), using the channel it reported to skip a scan.
-        if received and controller.is_leader and received.get('type') == 'hotspot_found':
-            _gave_up   = False
-            _cap_fails = 0
-            _retry_ms  = BRIDGE_RETRY_INIT_MS
-            _retry_at  = now_ms
-            _hint_ch   = received.get('ch')
-            _log.write('main', 'hotspot alert received, resuming bridge')
+            recovery.tick(controller, mesh, now_ms)
 
-        # Advance bridge state machine each tick — non-blocking (except the
-        # one sanctioned scan inside start_connect at the moment of connecting).
-        if controller.is_leader and not _gave_up:
-            if _bridge is None:
-                if time.ticks_diff(now_ms, _retry_at) >= 0:
-                    from bridge import Bridge
-                    _bridge = Bridge(mesh)
-                    if _hint_ch is not None:
-                        _bridge.set_channel_hint(_hint_ch)
-                        _hint_ch = None
-            else:
-                result = _bridge.tick_connect(now_ms)
-                if result is True:
-                    _log.write('main', 'bridge connected')
-                    _retry_ms  = BRIDGE_RETRY_INIT_MS
-                    _cap_fails = 0
-                    mesh.set_autonomous(False)
-                    # Flush the local log buffer so the autonomous-lifecycle
-                    # events that happened while disconnected reach the server.
-                    for _e in _log.get_entries():
-                        _bridge.forward({'type': 'log', 'sender': mesh.mac,
-                                         'src': _e['src'], 'lvl': _e['lvl'],
-                                         'msg': _e['msg']})
-                elif result is False:
-                    failed_interval = _retry_ms   # the interval that just failed
-                    if failed_interval >= BRIDGE_RETRY_MAX_MS:
-                        _cap_fails += 1   # already at the cap — count toward giving up
-                    if failed_interval >= BRIDGE_AUTONOMOUS_AFTER_MS and not mesh.autonomous:
-                        mesh.set_autonomous(True)  # 40s interval failed → autonomous
-                        _log.write('main', 'no server yet, declaring autonomous', level='warn')
-                    _retry_ms = min(_retry_ms * 2, BRIDGE_RETRY_MAX_MS)
-                    _retry_at = time.ticks_add(now_ms, _retry_ms)
-                    _bridge = None
-                    if _cap_fails >= BRIDGE_CAP_RETRIES:
-                        _gave_up = True
-                        _log.write('main', 'no server found, stopped scanning', level='warn')
+            if controller.ota_requested:
+                _run_ota(wdt)
 
-        # Tick bridge: forward mesh messages and execute incoming commands.
-        # check_server_alive() resets to IDLE if heartbeats go silent.
-        if _bridge and _bridge.is_connected():
-            if not _bridge.check_server_alive(now_ms):
-                _log.write('main', 'server heartbeat lost, reconnecting', level='warn')
-                _bridge    = None
-                _retry_ms  = BRIDGE_RETRY_INIT_MS
-                _cap_fails = 0
-                _retry_at  = time.ticks_add(now_ms, BRIDGE_RETRY_INIT_MS)
-            else:
-                cmd = _bridge.tick()
-                if cmd:
-                    _execute_bridge_command(cmd, controller, now_ms)
+            if controller.reboot_requested:
+                import machine
+                machine.reset()   # apply a freshly pushed config
 
-        # New-controller wake scan: a freshly-booted follower that sees the mesh
-        # running autonomously does one boot scan and alerts the leader if it
-        # finds a hotspot — re-waking a leader that had given up. One-shot.
-        if (not controller.is_leader and not _wake_scanned
-                and mesh.mesh_autonomous
-                and time.ticks_diff(now_ms, _boot_ms) < WAKE_SCAN_WINDOW_MS):
-            _wake_scanned = True
-            from mesh import scan_channel
-            from secrets import OTA_SSID as _SSID
-            ch = scan_channel(_SSID)
-            if ch is not None:
-                mesh.send_hotspot_found(ch)
-                _log.write('main', 'found hotspot while autonomous, alerting leader')
-
-        # Orphan recovery (non-leaders only). If silent too long, rescan for the
-        # hotspot and re-pin to its channel — handles a missed set_channel or a
-        # hotspot that appeared after this controller had already migrated.
-        if not controller.is_leader and mesh.silent_for(now_ms) > ORPHAN_SILENCE_MS:
-            if time.ticks_diff(now_ms, _last_recovery_ms) > ORPHAN_SILENCE_MS:
-                _last_recovery_ms = now_ms
-                from mesh import scan_channel
-                from secrets import OTA_SSID as _SSID
-                ch = scan_channel(_SSID)
-                if ch is not None:
-                    mesh.apply_channel(ch)
-                else:
-                    mesh.apply_channel(DEFAULT_CHANNEL)
-                mesh.announce()  # re-announce presence on the (possibly new) channel
-                _log.write('main', 'orphan recovery rescan', level='warn')
-
-        # Handle OTA update requested via mesh (non-leader controllers)
-        if controller.ota_requested:
-            _run_ota()
+            errors = 0
+        except Exception as e:
+            # One bad tick shouldn't drop the show: log and carry on. A
+            # persistent run of errors means broken state — reboot to recover.
+            errors += 1
+            _log.write('main', 'loop error: ' + str(e), level='error')
+            if errors >= MAX_LOOP_ERRORS:
+                _error_flash_and_reset('persistent loop errors')
 
 
-main()
+def _handle_buttons(controller, button, soloist_button, now_ms):
+    event = button.update(now_ms)
+    if event == 'short':
+        controller.next_scene(now_ms)
+    elif event == 'long':
+        controller.next_theme(now_ms)
+
+    solo_event = soloist_button.update(now_ms)
+    if solo_event == 'short':
+        controller.solo()
+    elif solo_event == 'long':
+        controller.release_solo()
+
+
+try:
+    main()
+except Exception as _e:
+    # Fatal error (setup failure, or something that escaped the loop guard).
+    # Flash red and reset rather than dropping to a dark REPL on stage.
+    _error_flash_and_reset(str(_e))

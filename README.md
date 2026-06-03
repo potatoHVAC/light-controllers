@@ -92,16 +92,73 @@ Start the server (also handles OTA):
 
 ### Using the panel
 
-Once the leader controller connects, open [http://localhost:8080/panel](http://localhost:8080/panel) in a browser or on your phone.
+Once the leader controller connects, open the **control panel** (the default page)
+at [http://localhost:8080/](http://localhost:8080/) in a browser or on your phone
+(it installs as a home-screen app via the web manifest).
 
-The panel provides:
-- Current theme, scene, and dim level
-- Next Scene / Next Theme buttons
-- Random Scene — each controller picks independently
-- Solo toggle
-- Dim slider
+The control panel provides:
+- Live theme, scene, master dim, controller count, and bridge status
+- Next Scene / Next Theme, Random Scene, Random Theme
+- Default Show and "Everyone → Personal Default"
+- A grid of controllers — tap one to make it the soloist; a full-width Release Solo
+- Master dim slider
+
+The **admin page** at [/admin](http://localhost:8080/admin) adds mesh stats,
+firmware version + deploy (all / outdated only), per-controller config editing
+(nickname, strip LED counts, agnostic tags, personal default theme/scene/color),
+an Identify button (orange blink to locate a unit), and the unassigned-controller
+defaults. Configs and tags persist in `server/lightrig.db` (SQLite).
 
 The leader is elected automatically. If the leader controller goes offline, another controller takes over within 10 seconds.
+
+### Running the server
+
+```bash
+./server/run.sh            # Docker, host networking (recommended)
+./server/run.sh --local    # or run directly: python3 -m server.app
+python3 server/watch.py    # auto-reload on edits during development
+```
+
+---
+
+## Tests
+
+The suite runs under CPython — the MicroPython hardware modules (`machine`,
+`neopixel`, `network`, `espnow`, `uhashlib`, `ubinascii`) are replaced with
+fakes, and `time` is driven by a controllable clock. Integration tests build
+real `Controller` + `Mesh` + `Fixture` + `Strip` instances and run them against
+an in-memory, channel-aware mesh bus, so multiple controllers are simulated in
+one process.
+
+### Running
+
+```bash
+python3 -m pip install -r tests/requirements.txt   # one-time (needs pytest)
+./tests/run.sh
+```
+
+Pass extra arguments straight through to pytest:
+
+```bash
+./tests/run.sh -k election     # only tests matching "election"
+./tests/run.sh tests/unit      # only the unit tests
+./tests/run.sh -v              # verbose
+```
+
+### Layout
+
+- `tests/fakes/` — fake hardware modules and the shared radio **bus** (models
+  ESP-NOW only reaching peers on the same WiFi channel).
+- `tests/harness.py` — the clock and the multi-node `Simulation`.
+- `tests/conftest.py` — installs the fakes before any controller code imports.
+- `tests/unit/` — pure logic: color math, the HMAC cross-runtime contract,
+  button debounce, strip dim scaling, storage, themes, mesh dedup/channel,
+  bridge auth.
+- `tests/integration/` — leader election, scene/theme propagation, solo,
+  channel convergence across simulated controllers.
+
+No hardware is required. Anything that can only be checked on a real ESP32
+(actual ESP-NOW range, NeoPixel timing, flash, GC) is intentionally out of scope.
 
 ---
 

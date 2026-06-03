@@ -3,6 +3,25 @@ import random
 import storage
 from patterns import SolidPattern, UniformScene
 
+IDENTIFY_COLOR = (180, 60, 0)   # orange identify blink
+IDENTIFY_LEDS  = 3              # first N LEDs of the primary strip
+IDENTIFY_BLINK_MS = 200
+
+
+def _parse_color(value):
+    """Parse a '#rrggbb' (or 'rrggbb') string to an (r, g, b) tuple, else None."""
+    if not value:
+        return None
+    if isinstance(value, (tuple, list)):
+        return tuple(value)
+    s = value.lstrip('#')
+    if len(s) != 6:
+        return None
+    try:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16))
+    except ValueError:
+        return None
+
 
 class Controller:
     """Manages themes and scenes for a fixture.
@@ -31,7 +50,9 @@ class Controller:
 
     def __init__(self, fixture, themes, network=None,
                  solo_dim=0.2, save_delay_ms=2000,
-                 election_timeout_ms=5000, leader_reelect_ms=10000):
+                 election_timeout_ms=5000, leader_reelect_ms=10000,
+                 solo_release_fade_ms=1000, identify_ms=5000,
+                 personal_default=None):
         self._fixture = fixture
         self._themes = themes
         self._network = network
@@ -39,6 +60,9 @@ class Controller:
         self._save_delay_ms = save_delay_ms
         self._election_timeout_ms = election_timeout_ms
         self._leader_reelect_ms = leader_reelect_ms
+        self._solo_release_fade_ms = solo_release_fade_ms
+        self._identify_ms = identify_ms
+        self._personal_default = personal_default or {}
         self._save_pending = False
         self._save_after = 0
         self._scenes = []
@@ -49,6 +73,13 @@ class Controller:
         self._last_solo_hb_ms = None   # tracks last heartbeat carrying solo dim
         self._is_leader = False
         self._ota_requested = False
+        self._reboot_requested = False
+        self._identify_until_ms = None
+        # Dim fade state (used when releasing solo). _fade_dur == 0 means idle.
+        self._fade_from = 1.0
+        self._fade_to = 1.0
+        self._fade_start_ms = 0
+        self._fade_dur = 0
 
         state = storage.load({'theme': 0, 'scenes': [0] * len(themes)})
         self._theme_idx = min(state['theme'], len(themes) - 1)
@@ -71,6 +102,40 @@ class Controller:
         self._ota_requested = False
         return flag
 
+    @property
+    def reboot_requested(self):
+        """True if a config change needs a reboot to apply. Clears on read."""
+        flag = self._reboot_requested
+        self._reboot_requested = False
+        return flag
+
+    def _targeted(self, msg):
+        """A targeted message applies only to this controller (or to all when
+        no target is given)."""
+        t = msg.get('target')
+        return t is None or (self._network is not None and t == self._network.mac)
+
+    def apply_identify(self, now_ms):
+        """Blink the first few LEDs orange for a few seconds to locate this unit."""
+        self._identify_until_ms = time.ticks_add(now_ms, self._identify_ms)
+
+    def apply_default(self, now_ms):
+        """Go to this controller's stored personal default theme/scene/color."""
+        d = self._personal_default
+        if d.get('default_theme'):
+            color = d.get('default_color')
+            self._apply_network_state(
+                d['default_theme'], d.get('default_scene'), now_ms,
+                color=_parse_color(color),
+            )
+
+    def apply_set_config(self, config):
+        """Persist a pushed config and request a reboot to apply it."""
+        if config:
+            import device_config
+            device_config.save(config)
+            self._reboot_requested = True
+
     def status(self):
         """Return current controller state as a dict for the control panel."""
         return {
@@ -82,52 +147,56 @@ class Controller:
             'leader':     self._is_leader,
         }
 
-    def start(self, now_ms, button=None):
-        """Wait for network sync then play the initial scene.
+    def begin(self, now_ms):
+        """Start the (non-blocking) sync/election phase. Call once, then call
+        tick_start() each tick until it returns True. The strips stay dark until
+        startup completes (synced from the mesh, elected leader, or button)."""
+        self._synced = False
+        self._election_deadline = time.ticks_add(now_ms, self._election_timeout_ms)
 
-        Uses tick() so heartbeat_request messages are properly handled during
-        the wait. If no heartbeat arrives within election_timeout_ms, this
-        controller declares itself leader (it's first on the network).
+    def tick_start(self, now_ms, button_pressed=False):
+        """Advance startup one step. Returns True when startup is complete.
 
-        Button is locked out once a network sync message arrives so a
-        simultaneous press can't override network data.
-        """
-        if self._network and button:
-            synced = False
-            election_deadline = time.ticks_add(now_ms, self._election_timeout_ms)
+        Syncs from the first heartbeat/change, or declares itself leader if no
+        heartbeat arrives within election_timeout_ms, or starts immediately on a
+        button press. Button is locked out once a sync message has arrived."""
+        if not self._network:
+            self._finish_start(now_ms)
+            return True
 
-            while True:
-                now_ms = time.ticks_ms()
-                msg = self._network.tick(
-                    self._theme_name(),
-                    self._scene_name(),
-                    self._network_dim(),
-                    now_ms,
-                    color=self._theme_color(),
+        msg = self._network.tick(
+            self._theme_name(), self._scene_name(),
+            self._network_dim(), now_ms, color=self._theme_color(),
+        )
+        if msg:
+            msg_type = msg.get('type')
+            if msg_type in ('heartbeat', 'change'):
+                color = msg.get('color')
+                self._apply_network_state(
+                    msg.get('theme'), msg.get('scene'), now_ms,
+                    color=tuple(color) if color else None,
                 )
-                if msg:
-                    msg_type = msg.get('type')
-                    if msg_type in ('heartbeat', 'change'):
-                        color = msg.get('color')
-                        self._apply_network_state(
-                            msg.get('theme'), msg.get('scene'), now_ms,
-                            color=tuple(color) if color else None,
-                        )
-                        if not self._is_soloist:
-                            self.set_dim(msg.get('dim', 1.0))
-                        self._handle_leader_heartbeat(msg, now_ms)
-                        synced = True
-                        break
-                    elif msg_type in ('solo', 'dim'):
-                        self._handle_dim_msg(msg)
+                if not self._is_soloist:
+                    self.set_dim(msg.get('dim', 1.0))
+                self._handle_leader_heartbeat(msg, now_ms)
+                self._finish_start(now_ms)
+                return True
+            elif msg_type in ('solo', 'dim'):
+                self._handle_dim_msg(msg, now_ms)
 
-                if time.ticks_diff(now_ms, election_deadline) >= 0:
-                    self._become_leader(now_ms)
-                    break
+        if time.ticks_diff(now_ms, self._election_deadline) >= 0:
+            self._become_leader(now_ms)
+            self._finish_start(now_ms)
+            return True
 
-                if not synced and button.update(now_ms):
-                    break
+        if not self._synced and button_pressed:
+            self._finish_start(now_ms)
+            return True
 
+        return False
+
+    def _finish_start(self, now_ms):
+        if self._network:
             self._network.announce()
         self._play_current(now_ms)
 
@@ -166,15 +235,16 @@ class Controller:
         self._is_soloist = True
         self._solo_active = True
         self._solo_dim_target = self._solo_dim
+        self._fade_dur = 0            # cancel any in-progress release fade
         self.set_dim(1.0)
         if self._network:
             self._network.send_solo(active=True, dim=self._solo_dim)
 
     def release_solo(self):
-        """Release solo: restore full brightness across the mesh."""
+        """Release solo: fade back to full brightness across the mesh."""
         self._is_soloist = False
         self._solo_active = False
-        self.set_dim(1.0)
+        self._start_release_fade(time.ticks_ms())
         if self._network:
             self._network.send_solo(active=False)
 
@@ -183,11 +253,45 @@ class Controller:
         self._dim = max(0.0, min(1.0, factor))
         self._fixture.set_dim(self._dim)
 
+    def _start_release_fade(self, now_ms):
+        """Begin a non-blocking fade from the current dim up to full brightness."""
+        if self._solo_release_fade_ms <= 0:
+            self.set_dim(1.0)
+            return
+        self._fade_from     = self._dim
+        self._fade_to       = 1.0
+        self._fade_start_ms = now_ms
+        self._fade_dur      = self._solo_release_fade_ms
+
+    def _apply_fade(self, now_ms):
+        if self._fade_dur <= 0:
+            return
+        t = time.ticks_diff(now_ms, self._fade_start_ms)
+        if t >= self._fade_dur:
+            self.set_dim(self._fade_to)
+            self._fade_dur = 0
+        else:
+            frac = t / self._fade_dur
+            self.set_dim(self._fade_from + (self._fade_to - self._fade_from) * frac)
+
+    def _render_identify(self, now_ms):
+        """Blink the first few LEDs of the primary strip orange (non-blocking)."""
+        strip = self._fixture.strips[0]
+        strip.fill((0, 0, 0))
+        if (now_ms // IDENTIFY_BLINK_MS) % 2 == 0:
+            for i in range(min(IDENTIFY_LEDS, strip.num_leds)):
+                strip[i] = IDENTIFY_COLOR
+        strip.show()
+
     def update(self, now_ms):
         """Advance the current scene and flush to hardware. Call every loop tick.
         Returns the raw mesh message received this tick (or None) so the caller
         can forward it to the bridge without coupling mesh to bridge."""
-        self._fixture.update(now_ms)
+        if self._identify_until_ms is not None and time.ticks_diff(now_ms, self._identify_until_ms) < 0:
+            self._render_identify(now_ms)     # identify overrides the scene briefly
+        else:
+            self._identify_until_ms = None
+            self._fixture.update(now_ms)
         received = None
         if self._network:
             msg = self._network.tick(
@@ -206,16 +310,28 @@ class Controller:
                         msg.get('theme'), msg.get('scene'), now_ms,
                         color=tuple(color) if color else None,
                     )
-                    if not self._is_soloist:
+                    if not self._is_soloist and self._fade_dur <= 0:
                         incoming_dim = msg.get('dim', 1.0)
                         self.set_dim(incoming_dim)
                         if self._solo_active and incoming_dim < 1.0:
                             self._last_solo_hb_ms = now_ms
                     self._handle_leader_heartbeat(msg, now_ms)
                 elif msg_type in ('solo', 'dim'):
-                    self._handle_dim_msg(msg)
+                    self._handle_dim_msg(msg, now_ms)
                 elif msg_type == 'ota_update':
-                    self._ota_requested = True
+                    if self._targeted(msg):
+                        self._ota_requested = True
+                elif msg_type == 'identify':
+                    if self._targeted(msg):
+                        self.apply_identify(now_ms)
+                elif msg_type == 'solo_request':
+                    if self._targeted(msg):
+                        self.solo()
+                elif msg_type == 'default':
+                    self.apply_default(now_ms)
+                elif msg_type == 'set_config':
+                    if self._targeted(msg):
+                        self.apply_set_config(msg.get('config'))
 
             # Re-election if leader has gone offline
             if not self._is_leader:
@@ -229,6 +345,8 @@ class Controller:
                     self._solo_active = False
                     self._last_solo_hb_ms = None
                     self.set_dim(1.0)
+
+        self._apply_fade(now_ms)
 
         if self._save_pending and time.ticks_diff(now_ms, self._save_after) >= 0:
             self._save_pending = False
@@ -265,20 +383,21 @@ class Controller:
         know what level to use, not 1.0 which would incorrectly restore them."""
         return self._solo_dim_target if self._is_soloist else self._dim
 
-    def _handle_dim_msg(self, msg):
+    def _handle_dim_msg(self, msg, now_ms):
         msg_type = msg.get('type')
         if msg_type == 'solo':
             if msg.get('active', False):
                 self._is_soloist = False
                 self._solo_active = True
                 self._solo_dim_target = msg.get('dim', self._solo_dim)
+                self._fade_dur = 0                 # cancel any release fade
                 self.set_dim(self._solo_dim_target)
             else:
                 self._is_soloist = False
                 self._solo_active = False
-                self.set_dim(1.0)
+                self._start_release_fade(now_ms)   # fade back to full
         elif msg_type == 'dim':
-            if not self._is_soloist:
+            if not self._is_soloist and self._fade_dur <= 0:
                 self.set_dim(msg.get('dim', 1.0))
 
     def _apply_network_state(self, theme_name, scene_name, now_ms, color=None):

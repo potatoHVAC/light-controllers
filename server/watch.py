@@ -2,32 +2,29 @@
 """
 Auto-reload server for Light Controllers.
 
-Watches server/serve.py and shared config files for changes and restarts
-the server automatically. Run from the project root.
+Watches the server package and shared config/secrets, restarting the server on
+any change. Run from the project root:
 
-Usage:
     python3 server/watch.py
 """
 
+import glob
 import os
 import sys
 import time
-import signal
 import subprocess
 
-WATCH_FILES = [
-    'server/serve.py',
-    'config.py',
-    'secrets.py',
-    'auth.py',
-]
 
-CHECK_INTERVAL = 1  # seconds between mtime checks
+def watch_files():
+    files = ['config.py', 'secrets.py']
+    files += glob.glob('server/*.py')
+    files += glob.glob('server/static/*')
+    return files
 
 
 def get_mtimes():
     mtimes = {}
-    for f in WATCH_FILES:
+    for f in watch_files():
         try:
             mtimes[f] = os.path.getmtime(f)
         except FileNotFoundError:
@@ -36,7 +33,7 @@ def get_mtimes():
 
 
 def start_server():
-    return subprocess.Popen([sys.executable, 'server/serve.py'])
+    return subprocess.Popen([sys.executable, '-m', 'server.app'])
 
 
 def main():
@@ -50,27 +47,21 @@ def main():
 
     try:
         while True:
-            time.sleep(CHECK_INTERVAL)
-
-            # Check if server process died unexpectedly
+            time.sleep(1)
             if proc.poll() is not None:
                 print('Server exited — restarting...')
                 proc = start_server()
                 continue
-
             new_mtimes = get_mtimes()
-            changed = [f for f in WATCH_FILES if new_mtimes[f] != mtimes[f]]
+            changed = [f for f in new_mtimes if new_mtimes[f] != mtimes.get(f)]
             if changed:
-                print(f'Changed: {", ".join(changed)} — restarting server...')
-                proc.terminate()
-                proc.wait()
+                print(f'Changed: {", ".join(changed)} — restarting...')
+                proc.terminate(); proc.wait()
                 proc = start_server()
                 mtimes = new_mtimes
-
     except KeyboardInterrupt:
         print('\nStopping server...')
-        proc.terminate()
-        proc.wait()
+        proc.terminate(); proc.wait()
 
 
 if __name__ == '__main__':

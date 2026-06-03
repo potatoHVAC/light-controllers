@@ -1,22 +1,30 @@
 #!/bin/bash
 if [ "$1" = "-h" ]; then
-  echo "Usage: ./server/run.sh"
+  echo "Usage: ./server/run.sh [--local]"
   echo ""
-  echo "Builds and runs the OTA and show control server in Docker."
-  echo "Firmware files are mounted from the project root."
-  echo "Open http://localhost:8080 for OTA status."
-  echo "Open http://localhost:8080/panel for the show control panel."
+  echo "Runs the Light Controllers server (control panel, admin, OTA, bridge)."
+  echo "Control panel: http://localhost:8080/   Admin: http://localhost:8080/admin"
+  echo ""
+  echo "By default runs in Docker with host networking (so UDP discovery and the"
+  echo "bridge reach the mesh). The project is mounted so firmware files are served"
+  echo "and the SQLite db persists in server/lightrig.db."
   echo ""
   echo "Flags:"
-  echo "  -h  Show this help message"
+  echo "  --local  Run directly with python3 -m server.app (no Docker)"
+  echo "  -h       Show this help message"
   exit 0
 fi
 
 cd "$(dirname "$0")/.."
 
-docker build -f server/Dockerfile -t lightrig-ota . && \
+if [ "$1" = "--local" ]; then
+  exec python3 -m server.app
+fi
+
+docker build -f server/Dockerfile -t lightrig-server . && \
   docker run --rm \
     --network host \
     -v "$(pwd):/firmware" \
     -e FIRMWARE_DIR=/firmware \
-    lightrig-ota
+    -w /firmware \
+    lightrig-server

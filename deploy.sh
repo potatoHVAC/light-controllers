@@ -43,7 +43,7 @@ echo "Copying files..."
 mpremote connect "$PORT" \
   cp boot.py :boot.py + \
   cp main.py :main.py + \
-  cp color.py button.py strip.py fixture.py storage.py controller.py themes.py mesh.py ota.py secrets.py bridge.py config.py auth.py log.py :
+  cp color.py button.py strip.py fixture.py storage.py controller.py themes.py mesh.py ota.py secrets.py bridge.py config.py auth.py log.py leader_link.py recovery.py device_config.py :
 
 mpremote connect "$PORT" exec "import os; os.mkdir('patterns')"
 
@@ -53,6 +53,14 @@ for f in patterns/*.py; do
 done
 unset 'CMD[${#CMD[@]}-1]'
 "${CMD[@]}"
+
+# Stamp the firmware version so the controller reports it (matches what an OTA
+# update would write), letting the admin page tell who is up to date.
+FW=$(python3 -c "import sys; sys.path.insert(0,'.'); from pathlib import Path; from server import firmware; print(firmware.current_version(Path('.')))" 2>/dev/null)
+if [ -n "$FW" ]; then
+  echo "Stamping firmware version $FW..."
+  mpremote connect "$PORT" exec "open('firmware_version','w').write('$FW')"
+fi
 
 echo "Restarting device..."
 mpremote connect "$PORT" reset

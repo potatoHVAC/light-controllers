@@ -71,6 +71,8 @@ class Mesh:
         self._last_leader_hb_ms = None
         self._autonomous = False        # this leader has given up finding a server
         self._mesh_autonomous = False   # observed: the current leader is autonomous
+        self._fw = None                 # firmware version (reported in heartbeats)
+        self._cfg = None                # config version (reported in heartbeats)
         self._pending_retry = None  # (type, ..., fire_at_ms) for critical retransmit
         # Reusable packet dict — mutated in place on every _broadcast() to avoid
         # allocating a new dict (and triggering GC) on every send.
@@ -128,13 +130,34 @@ class Mesh:
         leader can resume connecting even after it gave up scanning. Bursted a
         few times so a single dropped packet doesn't leave the leader asleep."""
         for _ in range(SET_CHANNEL_REPEATS):
-            self._seq += 1
-            self._send({
-                'type':   'hotspot_found',
-                'sender': self._mac,
-                'seq':    self._seq,
-                'ch':     ch,
-            })
+            self._send_typed('hotspot_found', ch=ch)
+
+    def set_versions(self, fw, cfg):
+        """Set this controller's firmware version and config version, reported
+        in heartbeats so the server knows who is up to date and configured."""
+        self._fw = fw
+        self._cfg = cfg
+
+    # Targeted relays: the leader rebroadcasts a server command onto the mesh so
+    # the addressed controller (target == its MAC, or None for all) acts on it.
+    def send_identify(self, target):
+        self._send_typed('identify', target=target)
+
+    def send_solo_request(self, target):
+        self._send_typed('solo_request', target=target)
+
+    def send_default(self):
+        self._send_typed('default')
+
+    def send_set_config(self, target, config):
+        self._send_typed('set_config', target=target, config=config)
+
+    def _send_typed(self, msg_type, **fields):
+        """Broadcast a small typed control message (sender + seq + extra fields)."""
+        self._seq += 1
+        packet = {'type': msg_type, 'sender': self._mac, 'seq': self._seq}
+        packet.update(fields)
+        self._send(packet)
 
     def silent_for(self, now_ms):
         """Milliseconds since any mesh packet was last received from a peer.
@@ -349,6 +372,9 @@ class Mesh:
             self._pkt['nonce'] = nonce
         elif 'nonce' in self._pkt:
             del self._pkt['nonce']
+        # Identity for the server registry (null until set at boot).
+        self._pkt['fw'] = self._fw
+        self._pkt['cfg'] = self._cfg
         self._send(self._pkt)
 
     def _send(self, data):
