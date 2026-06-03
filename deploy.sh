@@ -56,10 +56,13 @@ unset 'CMD[${#CMD[@]}-1]'
 
 # Stamp the firmware version so the controller reports it (matches what an OTA
 # update would write), letting the admin page tell who is up to date.
-FW=$(python3 -c "import sys; sys.path.insert(0,'.'); from pathlib import Path; from server import firmware; print(firmware.current_version(Path('.')))" 2>/dev/null)
-if [ -n "$FW" ]; then
+FW=$(python3 -c "import sys; sys.path.insert(0,'.'); from pathlib import Path; from server import firmware; print(firmware.current_version(Path('.')))")
+if echo "$FW" | grep -qE '^[0-9a-f]{12}$'; then
   echo "Stamping firmware version $FW..."
   mpremote connect "$PORT" exec "open('firmware_version','w').write('$FW')"
+else
+  echo "Warning: could not compute firmware version — controller will appear outdated until redeployed."
+  echo "  Make sure you are running deploy.sh from the project root."
 fi
 
 echo "Restarting device..."

@@ -21,6 +21,13 @@
   </div>
 
   <div class="card">
+    <h2>Firmware version <button style="font-size:11px;padding:4px 8px;flex:none" onclick="toggleHashDebug()">debug</button></h2>
+    <div id="hashdebug" style="display:none;margin-top:8px">
+      <div id="hashdetail" class="muted">Loading…</div>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Firmware deploy</h2>
     <div class="row">
       <button data-needs-bridge class="warnbtn" onclick="deployFirmware('deploy_outdated')">Deploy Outdated</button>

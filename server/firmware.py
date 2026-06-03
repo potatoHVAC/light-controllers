@@ -43,7 +43,10 @@ def manifest(root, files=OTA_FILES):
 
 def current_version(root, files=OTA_FILES):
     """SHA-256 over the (path, content) of every present firmware file except
-    the excluded ones. Returns a short hex string."""
+    the excluded ones. Returns a short hex string.
+
+    Files are always processed in sorted order so the hash is stable regardless
+    of the order entries appear in OTA_FILES."""
     h = hashlib.sha256()
     for path in sorted(files):
         if path in _VERSION_EXCLUDE:
@@ -56,3 +59,28 @@ def current_version(root, files=OTA_FILES):
         h.update(full.read_bytes())
         h.update(b'\0')
     return h.hexdigest()[:VERSION_LEN]
+
+
+def version_detail(root, files=OTA_FILES):
+    """Return a breakdown of what went into the current version hash.
+
+    Useful for debugging why a controller's reported version doesn't match the
+    server. Returns {'version': str, 'files': [{'path', 'sha256', 'excluded',
+    'missing'}]} in the sorted order the hash uses."""
+    overall = hashlib.sha256()
+    entries = []
+    for path in sorted(files):
+        excluded = path in _VERSION_EXCLUDE
+        full = root / path
+        missing = not full.exists()
+        file_hash = None
+        if not excluded and not missing:
+            content = full.read_bytes()
+            file_hash = hashlib.sha256(content).hexdigest()[:VERSION_LEN]
+            overall.update(path.encode())
+            overall.update(b'\0')
+            overall.update(content)
+            overall.update(b'\0')
+        entries.append({'path': path, 'sha256': file_hash,
+                        'excluded': excluded, 'missing': missing})
+    return {'version': overall.hexdigest()[:VERSION_LEN], 'files': entries}

@@ -67,8 +67,9 @@ def _post_routes():
 
 def _get_routes():
     return {
-        '/api/status':      lambda a, q: a.status(),
-        '/api/controllers': lambda a, q: a.controllers(),
+        '/api/status':         lambda a, q: a.status(),
+        '/api/version_detail': lambda a, q: firmware.version_detail(PROJECT_ROOT),
+        '/api/controllers':    lambda a, q: a.controllers(),
         '/api/defaults':    lambda a, q: a.defaults(),
         '/api/tags':        lambda a, q: a.tags(),
         '/api/themes':      lambda a, q: a.themes(),

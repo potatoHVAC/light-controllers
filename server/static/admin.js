@@ -14,6 +14,31 @@ function setBridgeState(connected) {
   document.querySelectorAll('[data-needs-bridge]').forEach(b => { b.disabled = !connected; });
 }
 
+function toggleHashDebug() {
+  const box = el('hashdebug');
+  if (box.style.display === 'none') {
+    box.style.display = 'block';
+    api.get('version_detail').then(d => {
+      el('hashdetail').innerHTML =
+        `<div style="margin-bottom:6px">Version: <b>${d.version}</b></div>` +
+        '<table style="font-size:11px;font-family:monospace;border-collapse:collapse;width:100%">' +
+        d.files.map(f => {
+          const note = f.excluded ? ' <span class="pill warn">excluded</span>'
+                     : f.missing  ? ' <span class="pill off">missing</span>'
+                     : '';
+          const hash = f.sha256 || '—';
+          return `<tr style="border-bottom:1px solid var(--line)">
+            <td style="padding:3px 6px 3px 0;color:var(--text)">${escapeHtml(f.path)}${note}</td>
+            <td style="padding:3px 0;color:var(--muted)">${hash}</td>
+          </tr>`;
+        }).join('') +
+        '</table>';
+    }).catch(() => { el('hashdetail').textContent = 'Failed to load.'; });
+  } else {
+    box.style.display = 'none';
+  }
+}
+
 function deployFirmware(action) {
   const s = el('fwstatus'); s.textContent = 'Sending…';
   api.post(action).then(d => {
