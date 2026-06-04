@@ -39,3 +39,18 @@ class WDT:
 
 def reset():
     raise SystemExit('machine.reset')
+
+
+# Reset-cause constants mirror the ESP32 port. boot.py uses these to tell a user
+# power-on from a firmware fault.
+PWRON_RESET     = 1
+HARD_RESET      = 2
+WDT_RESET       = 3
+DEEPSLEEP_RESET = 4
+SOFT_RESET      = 5
+
+_reset_cause = PWRON_RESET
+
+
+def reset_cause():
+    return _reset_cause

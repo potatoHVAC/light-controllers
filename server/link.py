@@ -20,7 +20,8 @@ CONTROLLER_TIMEOUT_S = 20    # a controller is "online" if heard within this
 
 def _entry():
     return {'last_seen': 0.0, 'fw': None, 'cfg': None,
-            'theme': None, 'scene': None, 'dim': 1.0, 'leader': False}
+            'theme': None, 'scene': None, 'dim': 1.0, 'leader': False,
+            'update_failed': None}
 
 
 class BridgeLink:
@@ -123,6 +124,7 @@ class BridgeLink:
                 info['scene'] = msg.get('scene', info['scene'])
                 info['dim']   = msg.get('dim', info['dim'])
                 info['leader'] = bool(msg.get('leader'))
+                info['update_failed'] = msg.get('upd_fail')   # None unless rolled back
             if msg.get('leader'):
                 self.mesh_state['leader'] = True
                 self.mesh_state['autonomous'] = bool(msg.get('auto'))

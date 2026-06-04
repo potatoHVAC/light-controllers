@@ -52,9 +52,10 @@ def _isolate(tmp_path):
     random.seed(0)          # deterministic mesh nonces/jitter so sims don't flake
     BUS.reset()
     harness.reset_clock(0)
-    import storage, device_config
+    import storage, device_config, slots
     storage._FILE = str(tmp_path / 'state.json')
     device_config._FILE = str(tmp_path / 'device_config.json')
     device_config._TMP  = str(tmp_path / 'device_config.json.tmp')
+    slots.ROOT_DIR = str(tmp_path) + '/'
     yield
     BUS.reset()

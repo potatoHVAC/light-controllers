@@ -10,8 +10,11 @@ OTA_FILES mirrors deploy.sh. Keep both in sync when adding files.
 """
 import hashlib
 
+# The firmware that lives inside an A/B slot. The root shims (boot.py, main.py,
+# slots.py) are NOT here — they are the trusted base, updated only by a wired
+# deploy, never by OTA. Keep in sync with deploy.sh SLOT_FILES.
 OTA_FILES = [
-    'boot.py', 'main.py', 'controller.py', 'mesh.py', 'bridge.py',
+    'app.py', 'controller.py', 'mesh.py', 'bridge.py',
     'auth.py', 'log.py', 'leader_link.py', 'recovery.py',
     'ota.py', 'color.py', 'button.py', 'strip.py',
     'fixture.py', 'storage.py', 'themes.py', 'secrets.py', 'config.py',

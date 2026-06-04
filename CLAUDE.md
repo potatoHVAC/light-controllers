@@ -6,7 +6,7 @@ These rules have no exceptions. They override all other instructions.
 
 - **Never commit plaintext passwords, keys, tokens, or secrets to the repository.** All credentials belong in untracked files (`secrets.py`, `.env`) or encrypted secret stores. Never use hardcoded credential fallbacks — if a secrets file is missing, fail loudly with a clear error. Before writing any credential to a file, verify that file is in `.gitignore`. Scan changed files for credential patterns before every commit.
 
-- **No blocking during normal operation.** The main loop must never block — no `sleep()`, no polling loops, no waiting on I/O. All long-running operations (WiFi connection, discovery, OTA) must be implemented as non-blocking state machines that advance one step per tick and return immediately. Blocking is only permitted during one-shot startup operations before the main loop begins (e.g., the A/B swap, the initial boot sequence), and for a single WiFi scan (`sta.scan()`, ~2s — no async API exists) at the discrete moment a controller connects to or recovers a hotspot: only the leader scans on connect, and only a freshly-booted or orphaned controller scans on recovery. Steady-state controllers never scan.
+- **No blocking during normal operation.** The main loop must never block — no `sleep()`, no polling loops, no waiting on I/O. All long-running operations (WiFi connection, discovery, OTA) must be implemented as non-blocking state machines that advance one step per tick and return immediately. Blocking is only permitted during one-shot startup operations before the main loop begins (e.g., the boot-time slot selection in boot.py, the initial boot sequence), and for a single WiFi scan (`sta.scan()`, ~2s — no async API exists) at the discrete moment a controller connects to or recovers a hotspot: only the leader scans on connect, and only a freshly-booted or orphaned controller scans on recovery. Steady-state controllers never scan.
 
 
 ## Project Purpose
@@ -92,6 +92,27 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **ESP-NOW:** `espnow` module (built into MicroPython ESP32 port)
 - HSV color math written in-house (no FastLED equivalent exists for MicroPython)
 - Controllers use a unified `LightRig` abstraction so network logic is decoupled from light type
+
+### A/B firmware slots & crash recovery
+
+Firmware lives in two slots, `/a` and `/b`; the root shims `boot.py` / `main.py`
+/ `slots.py` select and run the active one. Those three shims plus the per-device
+state at root (`active_slot`, `boot_count`, `device_config.json`, `state.json`)
+are the trusted base — updated only by a wired `deploy.sh`, never by OTA.
+
+- **boot.py** counts only *fault* resets (watchdog / `machine.reset`), never a
+  user power-on (`machine.reset_cause()`), so power-cycling a healthy unit can't
+  falsely mark it bad. It arms the watchdog (via main.py) before importing the
+  slot so hangs are caught too. After `THRESHOLD` (3) faults without a stable
+  run it flips to the other slot. It *always* flips — even to a slot that has
+  also failed — so the unit never refuses to boot.
+- **app.py** (the slot entry) marks the active slot `proven` once it has run
+  `HEALTHY_MS` (10s) error-free, and resets the boot counter.
+- **OTA and deploy write the *unproven* slot** (`slots.update_target`), so a run
+  of bad firmwares keeps overwriting the same untried slot and never destroys the
+  last known-good one. OTA downloads straight into that slot and flips the
+  pointer — there is no separate staging copy and no boot-time file copy.
+- A rollback records `update_failed` (slot + version), surfaced on the admin page.
 
 ## Server
 
@@ -189,6 +210,8 @@ The following categories are unrefined ideas and todo items. Keep the list title
 * when pushing a new config send a turn off all lights signal to wipe any lights past what we are turning off. The strings may be longer than what we want to show at a given time. 
 * The everyone personal (change name to personal defaults) momentarily changes the controllers before they change back. I'm assuming the heartbeat is overriding the change because it doesn't understand how users could be doing something different. 
 * a controller with fewer than 3 lights on its main string seems to prevent a firmware deployment. I assume it's because it's missing enough leds. This should not be blocking and a controller should be fine with missing some or all of the downloading lights. 
+* The dim displayed at top flickers between the solo dim and the master setting when solo mode is engaged. that dim should only show the master dim. I suspect this is heartbeat related.
+* the tag solo modes are not working properly. flashing full instead of respecting the master dim. 
 
 - **Architecture Clarification Questions:**
 
@@ -196,6 +219,7 @@ These are questions that I want clarification on over how they work so we can di
 
 * Is everything related to the user configs stored in the local database. I want to ensure were not adding traffic to the mesh by polling the admin page more than is necessary. I expect things like leader and controller count can all be picked up passively. 
 * Can the future phone app operate the server on its own and broadcast a hotspot from the app or would it be better to 
+* Is it possible for any of the config fields (show or user) to cause a controller to fail and stop working? Do we have tests written to cover this possibility? 
 
 - **Refactor:**
 * give all controllers a short mac address name in it's own field. Then remove the short mac addresses from controler nicknames and allow them to be none. That way we can remove the user defined nickname flag and fix the solo page selection because only user defined nicknames would appear in the nickname field. Make sure any display name defaults to the short macaddress when nickname is not present. Switch to using the first 6 characters of the mac instead of the last 6 unless that would be a problem. 

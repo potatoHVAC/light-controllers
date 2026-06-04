@@ -11,6 +11,7 @@ class FakeMesh:
         self.mac = 'aabbcc'
         self._fw = None
         self._cfg = None
+        self._upd_fail = None
 
     def set_autonomous(self, v):
         self.autonomous = v

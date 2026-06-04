@@ -4,6 +4,7 @@ import urequests
 import socket
 import os
 
+import slots
 from secrets import OTA_SSID, OTA_PASSWORD, BRIDGE_SECRET
 from config import DISCOVERY_PORT, DISCOVERY_MSG, HTTP_PORT as OTA_PORT
 from auth import verify as _verify_sig
@@ -13,10 +14,7 @@ CHUNK_SIZE          = 512
 WIFI_TIMEOUT_MS     = 5000
 DISCOVER_TIMEOUT_MS = 1000
 
-UPDATE_DIR   = '/update'
-UPDATE_READY = '/update_ready'
-
-_ORANGE = (255, 80, 0)   # "writing flash, do not power off" — matches main.py
+_ORANGE = (255, 80, 0)   # "writing flash, do not power off" — matches app.py
 _GREEN  = (0, 255, 0)
 _BLACK  = (0, 0, 0)
 
@@ -91,20 +89,25 @@ def _discover_server(feed=None):
 
 
 def run(np=None, feed=None):
-    """Check for OTA server and download update if found.
+    """Check for an OTA server and download an update into the inactive slot.
 
-    Files are downloaded into /update/ and verified before writing
-    /update_ready. The actual swap to root happens on the next boot
-    in main.py, so a power cut during download leaves the running
-    firmware completely untouched.
+    Files are downloaded into the slot this controller is NOT running from, and
+    verified before the active-slot pointer is flipped to it. The running slot is
+    never touched, so a power cut during the download just leaves the inactive
+    slot half-written — the pointer still points at the working slot, so it boots
+    normally and the garbage is overwritten on the next attempt.
 
-    WiFi is always shut down before returning so ESP-NOW initialises
-    cleanly regardless of how this function exits.
+    On success the pointer is flipped and the boot counter reset; the caller
+    reboots into the new slot. If the new slot then crash-loops, boot.py flips
+    the pointer back to this (still-intact) slot.
+
+    WiFi is always shut down before returning so ESP-NOW initialises cleanly
+    regardless of how this function exits.
 
     feed: optional watchdog-feed callback. The download outlasts the watchdog
     timeout, so it is fed through the connect/discovery/download loops.
 
-    Returns True if a verified update is staged, False otherwise.
+    Returns True if a verified update is staged and the pointer flipped.
     """
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
@@ -156,22 +159,30 @@ def run(np=None, feed=None):
 
         files = manifest.get('files', [])
 
-        # Clean up any previous incomplete download and start fresh
+        # Download into an unproven slot (preferring the inactive one), so a run
+        # of bad updates keeps overwriting the same untried slot and never
+        # destroys the last known-good firmware. The running slot is only chosen
+        # if it is itself the unproven one. Clear the target's proven flag (the
+        # new firmware hasn't proven itself) and any prior failure record.
+        target = slots.update_target()
+        tdir   = slots.slot_dir(target)
+        slots.clear_update_failed()
+        slots.clear_proven(target)
         try:
-            _rm_tree(UPDATE_DIR)
+            _rm_tree(tdir)        # discard whatever old version was in this slot
         except Exception:
             pass
-        os.mkdir(UPDATE_DIR)
+        os.mkdir(tdir)
 
         # Orange "do not power off" marker for the whole flash-writing phase.
         if np:
             _danger(np)
 
-        for i, f in enumerate(files):
+        for f in files:
             if feed:
                 feed()
             path = f['path']
-            update_path = UPDATE_DIR + '/' + path
+            update_path = tdir + '/' + path
             try:
                 resp = urequests.get(base + '/files/' + path)
                 _ensure_dir(update_path)
@@ -185,28 +196,29 @@ def run(np=None, feed=None):
                             feed()
                 resp.close()
             except Exception:
-                _rm_tree(UPDATE_DIR)
+                _rm_tree(tdir)
                 return False
 
         for f in files:
             try:
-                if os.stat(UPDATE_DIR + '/' + f['path'])[6] != f['size']:
-                    _rm_tree(UPDATE_DIR)
+                if os.stat(tdir + '/' + f['path'])[6] != f['size']:
+                    _rm_tree(tdir)
                     return False
             except Exception:
-                _rm_tree(UPDATE_DIR)
+                _rm_tree(tdir)
                 return False
 
-        # Stash the firmware version alongside the staged files so the A/B swap
-        # copies it to root; the controller then reports it to the server.
+        # Record the new slot's version, then flip the pointer and reset the boot
+        # counter. The flip is the last step: until it succeeds the controller
+        # still boots the old slot. After it, the caller reboots into the new one.
         try:
-            with open(UPDATE_DIR + '/firmware_version', 'w') as vf:
+            with open(tdir + '/firmware_version', 'w') as vf:
                 vf.write(manifest.get('version', ''))
         except Exception:
             pass
 
-        with open(UPDATE_READY, 'w') as mf:
-            mf.write('1')
+        slots.set_active(target)
+        slots.reset_boot_count()
 
         if np:
             _flash_done(np)

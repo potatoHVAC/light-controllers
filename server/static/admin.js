@@ -122,6 +122,7 @@ function renderControllers(list) {
             <b>${escapeHtml(c.nickname)}</b>
             ${c.leader ? '<span class="pill on">leader</span>' : ''}
             ${c.outdated && c.online ? '<span class="pill warn">outdated</span>' : ''}
+            ${c.update_failed ? `<span class="pill off">update failed: ${escapeHtml(c.update_failed)}</span>` : ''}
             ${defaultsLine}
             <div class="muted">${c.mac}${c.fw ? ' · fw ' + c.fw : ''}</div>
             ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}

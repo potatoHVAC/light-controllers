@@ -73,6 +73,7 @@ class Mesh:
         self._mesh_autonomous = False   # observed: the current leader is autonomous
         self._fw = None                 # firmware version (reported in heartbeats)
         self._cfg = None                # config version (reported in heartbeats)
+        self._upd_fail = None           # last rolled-back update version, or None
         self._pending_retry = None  # (type, ..., fire_at_ms) for critical retransmit
         # Reusable packet dict — mutated in place on every _broadcast() to avoid
         # allocating a new dict (and triggering GC) on every send.
@@ -132,11 +133,13 @@ class Mesh:
         for _ in range(SET_CHANNEL_REPEATS):
             self._send_typed('hotspot_found', ch=ch)
 
-    def set_versions(self, fw, cfg):
+    def set_versions(self, fw, cfg, update_failed=None):
         """Set this controller's firmware version and config version, reported
-        in heartbeats so the server knows who is up to date and configured."""
+        in heartbeats so the server knows who is up to date and configured.
+        update_failed: the version of a rolled-back update (admin flag), or None."""
         self._fw = fw
         self._cfg = cfg
+        self._upd_fail = update_failed
 
     # Targeted relays: the leader rebroadcasts a server command onto the mesh so
     # the addressed controller (target == its MAC, or None for all) acts on it.
@@ -378,6 +381,10 @@ class Mesh:
         # Identity for the server registry (null until set at boot).
         self._pkt['fw'] = self._fw
         self._pkt['cfg'] = self._cfg
+        if self._upd_fail is not None:
+            self._pkt['upd_fail'] = self._upd_fail
+        elif 'upd_fail' in self._pkt:
+            del self._pkt['upd_fail']
         self._send(self._pkt)
 
     def _send(self, data):

@@ -117,7 +117,7 @@ class LeaderLink:
         if time.ticks_diff(now_ms, self._self_hb_at) < _SELF_HB_MS:
             return
         self._self_hb_at = now_ms
-        self.bridge.forward({
+        pkt = {
             'type':   'heartbeat',
             'sender': self._mesh.mac,
             'theme':  controller.theme,
@@ -126,7 +126,10 @@ class LeaderLink:
             'fw':     self._mesh._fw,
             'cfg':    self._mesh._cfg,
             'leader': True,
-        })
+        }
+        if self._mesh._upd_fail is not None:
+            pkt['upd_fail'] = self._mesh._upd_fail
+        self.bridge.forward(pkt)
 
     def _flush_log_buffer(self):
         """Send the local log buffer so autonomous-lifecycle events that
