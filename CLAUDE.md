@@ -184,15 +184,9 @@ The following categories are unrefined ideas and todo items. Keep the list title
 * Add the default config as a fall back (or potential target for control actions) to every controller and make it part of the firmware hash so controlers are out of date when it's missing. 
 * I want a toggle at the top of the actioins that switches between mesh freedom and only the control plane is allowed to send changes. default is free comand mode.
 * The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
-* create a special controller tag named "leader" that when applied to a controller makes them a priority for handling the bridge
-* Create a special controller tag named "no-solo" that appears red. this tag removes the controller from the solo grid. It does not prevent that controller from participating in tag based solo groups. 
-* Add a special tag description page to the config edit page just before the controller section
-* discuss a system of saving some amount of logs after each show and keeping a few shows worth of logs before removing them. 
-* Add special tag "player" 
-* controllers without a user defined nickname should have priority as bridge. the order is leader label -> mac address name -> nicknamed -> player
 * add a color wheel for picking default colors with an optional text input below. 
 * assume any controller without custom light settings has 3 strings with 150 lights per string
-* put the tag picker in alphabetical order where special tags are first followed by a line break, then regular user tags below. 
+* leader, no-solo, player tags: UI/color-coding/descriptions/picker ordering done. Controller-side bridge priority order (leader tag → MAC-only → nicknamed → player) still needs election logic changes in mesh.py.
 
 - **Larger Ideas:**
 * I see were tracking when controllers go offline. I like that behavior on the main page. I also want that on the admin page to gray out missing controllers that have previously been seen this session. On the admin page make an option to remove that user from the show (do not delete that persons config). I want a deploy button next to each controller that opens a drop down that starts with a list of all known controllers for that show that are not responding then a line break and a list of all known configs in alphabetical order. If a new controller is brought online and a config is deployed, automatically remove the disconnected controller. If a config is deployed multiple times then those two controllers are allowed to operate as duplicates of each other. Put those in the list order based on which ever controller came online first. Controller configs should have a toggle that when true means they are important and should follow this missing controller behavior. False means they just disappear from the pages. Default should be any named controller is true, any unnamed controller is false.
@@ -226,3 +220,4 @@ These are questions that I want clarification on over how they work so we can di
 - **Refactor:**
 * give all controllers a short mac address name in it's own field. Then remove the short mac addresses from controler nicknames and allow them to be none. That way we can remove the user defined nickname flag and fix the solo page selection because only user defined nicknames would appear in the nickname field. Make sure any display name defaults to the short macaddress when nickname is not present. Switch to using the first 6 characters of the mac instead of the last 6 unless that would be a problem. 
 * Refactor the repo to mirror the slots on the drive. I want all the files that get written to a device to be in their own folder. I also want all the scripts including any in other directories to be moved into /bin but keep the root level files in the root of the git repo. Create a second hash to track the high sensitivity files that we can only change with a wired connection. Add that to the checks but don't advertise it anywhere. If that hash ever fails to match then hilight that controller bold in red on the admin page with a detailed message about using a hard line and flashing the device fresh. Alter the existing hash to only track the files we can update through ota. 
+* Add database validation to prevent commiting bad data. 

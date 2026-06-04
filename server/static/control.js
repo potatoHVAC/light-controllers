@@ -90,7 +90,9 @@ function refresh() {
   }).catch(() => {});
 
   api.get('controllers').then(list => {
-    const named = list.filter(c => c.has_nickname);
+    // no-solo tag removes a controller from individual solo selection
+    // (they can still participate in tag-group solos)
+    const named = list.filter(c => c.has_nickname && !(c.tags || []).includes('no-solo'));
 
     // Soloist grid
     const grid = el('grid');

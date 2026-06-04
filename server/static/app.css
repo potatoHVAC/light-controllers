@@ -66,6 +66,10 @@ button:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 button.lights-off-active { background: var(--err); border: 1px solid var(--err); }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 .tag { font-size: 11px; background: #243; color: #9d9; padding: 1px 6px; border-radius: 8px; }
+.tag.special { background: #2a3a2a; color: #8d8; }
+.tag.no-solo { background: #3a1a1a; color: var(--err); }
+.tag-chip.special { background: #2a3a2a; color: #8d8; }
+.tag-chip.no-solo { background: #3a1a1a; color: var(--err); }
 .strips { display: flex; gap: 6px; }
 .strips input { width: 33%; }
 .tag-wrap { position: relative; display: flex; gap: 6px; margin-top: 4px; }

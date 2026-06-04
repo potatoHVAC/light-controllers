@@ -4,6 +4,16 @@ let DEFAULTS = {};
 let bridgeConnected  = false;
 let activeEditorMac  = null;
 
+// Special tags have reserved meanings. Shown first in the picker, color-coded,
+// and described in the special-tags reference section.
+const SPECIAL_TAGS = ['leader', 'no-solo', 'player'];
+
+function tagClass(t) {
+  if (t === 'no-solo') return 'no-solo';
+  if (SPECIAL_TAGS.includes(t)) return 'special';
+  return '';
+}
+
 function themeOptions(sel, value) {
   sel.innerHTML = '<option value="">—</option>' +
     THEMES.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
@@ -22,9 +32,21 @@ function toggleTagPicker() {
   const picker = el('tag-picker');
   if (picker.style.display === 'none') {
     api.get('tags').then(tags => {
-      picker.innerHTML = tags.length
-        ? tags.map(t => `<button type="button" class="tag-chip" onclick="addTag('${escapeHtml(t)}')">${escapeHtml(t)}</button>`).join('')
-        : '<span class="muted" style="font-size:11px">No tags yet</span>';
+      if (!tags.length) {
+        picker.innerHTML = '<span class="muted" style="font-size:11px">No tags yet</span>';
+        picker.style.display = 'flex';
+        return;
+      }
+      const special = SPECIAL_TAGS.filter(t => tags.includes(t));
+      const regular = [...tags].sort().filter(t => !SPECIAL_TAGS.includes(t));
+      const chip = t => `<button type="button" class="tag-chip ${tagClass(t)}"
+        onclick="addTag('${escapeHtml(t)}')">${escapeHtml(t)}</button>`;
+      let html = special.map(chip).join('');
+      if (special.length && regular.length) {
+        html += '<div style="width:100%;border-top:1px solid var(--line);margin:2px 0"></div>';
+      }
+      html += regular.map(chip).join('');
+      picker.innerHTML = html;
       picker.style.display = 'flex';
     });
   } else {
@@ -49,6 +71,14 @@ function setBridgeState(connected) {
   bridgeConnected = connected;
   el('bridge-banner').classList.toggle('hidden', connected);
   document.querySelectorAll('[data-needs-bridge]').forEach(b => { b.disabled = !connected; });
+}
+
+function toggleSpecialTags() {
+  const body = el('special-tags-body');
+  const btn  = body.previousElementSibling.querySelector('button');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  btn.textContent    = open ? 'hide' : 'show';
 }
 
 // ── hash debug ──────────────────────────────────────────────────────────────
@@ -125,7 +155,7 @@ function renderControllers(list) {
             ${c.update_failed ? `<span class="pill off">update failed: ${escapeHtml(c.update_failed)}</span>` : ''}
             ${defaultsLine}
             <div class="muted">${c.mac}${c.fw ? ' · fw ' + c.fw : ''}</div>
-            ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
+            ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag ${tagClass(t)}">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
           </div>
           <div class="btn-group">
             <button ${(!c.online || !bridgeConnected) ? 'disabled' : ''} onclick="identify('${c.mac}')">Identify</button>

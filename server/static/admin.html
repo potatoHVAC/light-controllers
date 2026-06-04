@@ -65,6 +65,16 @@
   </div>
 
   <div class="card">
+    <h2>Special tags <button style="font-size:11px;padding:4px 8px;flex:none" onclick="toggleSpecialTags()">show</button></h2>
+    <div id="special-tags-body" style="display:none;margin-top:8px;font-size:12px;line-height:1.8">
+      <span class="tag special">leader</span> &nbsp;Priority candidate for the bridge role. Preferred over unnamed and nicknamed controllers.<br>
+      <span class="tag no-solo">no-solo</span> &nbsp;Hidden from the individual solo grid. Still participates in tag-group solos.<br>
+      <span class="tag special">player</span> &nbsp;Marks a performer's controller. Lower bridge priority than <em>leader</em>; higher than unnamed.
+      <div class="muted" style="margin-top:6px">Priority order: leader → unnamed (MAC only) → nicknamed → player</div>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Controllers</h2>
     <div id="controllers"><div class="muted">Loading…</div></div>
   </div>
