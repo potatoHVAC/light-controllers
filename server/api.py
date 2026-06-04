@@ -144,8 +144,12 @@ class Api:
     def release_solo(self):
         return self._link.send_command({'type': 'solo', 'active': False, 'dim': 1.0})
 
-    def solo_controller(self, mac):
-        return self._link.send_command({'type': 'solo_request'}, target=mac)
+    def solo_controller(self, mac, dim=0.25):
+        return self._link.send_command({'type': 'solo_request', 'dim': float(dim)}, target=mac)
+
+    def solo_tag(self, tag, dim=0.25):
+        """Broadcast a tag-group solo — controllers with matching tags become soloists."""
+        return self._link.send_command({'type': 'solo_tag', 'tag': tag, 'active': True, 'dim': float(dim)})
 
     def dim(self, value):
         return self._link.send_command({'type': 'dim', 'dim': float(value)})

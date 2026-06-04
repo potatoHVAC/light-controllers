@@ -44,8 +44,12 @@
 
   <div class="card">
     <h2>Soloist — tap a controller</h2>
-    <div class="grid" id="grid"><div class="muted">Loading…</div></div>
-    <button data-needs-bridge class="solo wide" style="margin-top:10px" onclick="act('release_solo')">Release Solo</button>
+    <label>Background Dim <span id="bgdimval">25</span>%</label>
+    <input data-needs-bridge type="range" id="bgdimslider" min="0" max="100" value="25"
+      oninput="el('bgdimval').textContent=this.value">
+    <div class="grid" id="grid" style="margin-top:10px"><div class="muted">Loading…</div></div>
+    <button data-needs-bridge id="release-solo-btn" class="release-solo wide" style="margin-top:10px" onclick="act('release_solo')">Release Solo</button>
+    <div id="tag-solo-btns" class="row" style="margin-top:8px"></div>
   </div>
 
   <script src="/static/common.js"></script>

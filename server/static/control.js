@@ -1,22 +1,40 @@
 // Control panel: live status, show controls, and a soloist grid.
-let soloing = null;
-let bridgeConnected = false;
-let lightsOffActive = false;
+let soloing    = null;   // mac of soloing controller, or null
+let soloingTag = null;   // tag name being soloed, or null
+let bridgeConnected  = false;
+let lightsOffActive  = false;
 let dimBeforeLightsOff = 100;
+
+function bgDim() { return parseInt(el('bgdimslider').value) / 100; }
+
+function updateReleaseSoloBtn() {
+  el('release-solo-btn').classList.toggle('available', soloing !== null || soloingTag !== null);
+}
 
 function act(action) {
   api.post(action).then(refresh);
-  if (action === 'release_solo') soloing = null;
+  if (action === 'release_solo') { soloing = null; soloingTag = null; updateReleaseSoloBtn(); }
 }
 
 function soloController(mac) {
   if (!bridgeConnected) return;
+  if (soloing === mac) { act('release_solo'); return; }   // double-tap releases
   soloing = mac;
-  api.post('solo', { mac }).then(refresh);
+  soloingTag = null;
+  updateReleaseSoloBtn();
+  api.post('solo', { mac, dim: bgDim() }).then(refresh);
+}
+
+function soloTag(tag) {
+  if (!bridgeConnected) return;
+  if (soloingTag === tag) { act('release_solo'); return; }  // double-tap releases
+  soloingTag = tag;
+  soloing = null;
+  updateReleaseSoloBtn();
+  api.post('solo_tag', { tag, dim: bgDim() }).then(refresh);
 }
 
 function onDimChange(input) {
-  // Manual slider move releases lights-off without restoring the saved level.
   if (lightsOffActive) releaseLightsOff(false);
   api.post('dim', { dim: input.value / 100 });
 }
@@ -65,21 +83,36 @@ function refresh() {
   }).catch(() => {});
 
   api.get('controllers').then(list => {
-    const grid = el('grid');
     const named = list.filter(c => c.has_nickname);
 
-    if (!named.length) { grid.innerHTML = '<div class="muted">No controllers online.</div>'; return; }
-    grid.innerHTML = named.map(c => {
-      const cls = ['ctrl'];
-      if (!c.online) cls.push('offline');
-      if (c.leader) cls.push('leader');
-      if (c.mac === soloing) cls.push('soloing');
-      const clickable = c.online && bridgeConnected;
-      if (clickable) cls.push('clickable');
-      const onclick = clickable ? `onclick="soloController('${c.mac}')"` : '';
-      return `<div class="${cls.join(' ')}" ${onclick}>
-        <div class="name">${escapeHtml(c.nickname)}</div>
-      </div>`;
+    // Soloist grid
+    const grid = el('grid');
+    if (!named.length) {
+      grid.innerHTML = '<div class="muted">No controllers online.</div>';
+    } else {
+      grid.innerHTML = named.map(c => {
+        const cls = ['ctrl'];
+        if (!c.online) cls.push('offline');
+        if (c.leader)  cls.push('leader');
+        if (c.mac === soloing) cls.push('soloing');
+        const clickable = c.online && bridgeConnected;
+        if (clickable) cls.push('clickable');
+        const onclick = clickable ? `onclick="soloController('${c.mac}')"` : '';
+        return `<div class="${cls.join(' ')}" ${onclick}>
+          <div class="name">${escapeHtml(c.nickname)}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Tag solo buttons — one per active tag across online named controllers
+    const activeTags = [...new Set(
+      named.filter(c => c.online).flatMap(c => c.tags || [])
+    )].sort();
+    el('tag-solo-btns').innerHTML = activeTags.map(tag => {
+      const active = tag === soloingTag;
+      return `<button data-needs-bridge ${!bridgeConnected ? 'disabled' : ''}
+        class="tag-solo${active ? ' active' : ''}"
+        onclick="soloTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</button>`;
     }).join('');
   }).catch(() => {});
 }

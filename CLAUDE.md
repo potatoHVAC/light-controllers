@@ -160,8 +160,6 @@ The following categories are unrefined ideas and todo items. Keep the list title
 
 - **Change Requests:**
 * add a button next to a controller to force the leader to switch to that controller. This should not prevent a reelection incase that controller goes down. Just acts like that controller won a new election. 
-* Add all active tags as buttons below the release soloist button on the control page that cause all controllers with that tag to be in solo mode. This should be done through the packet as, soloist to trumpet tags and those controllers should check the tag against their internal tag list and turn them selves on accordingly. I don't want individually addressed packets. Just one mass packet that lets everyone know who the target solo group is. 
-* Add a slider to change the relative brightness for non solo member at the top of the solo button area. This is relative to the soloist lighting which could have been controlled by the master dimmer above. 
 * Add the default config as a fall back (or potential target for control actions) to every controller and make it part of the firmware hash so controlers are out of date when it's missing. 
 * I want a toggle at the top of the actioins that switches between mesh freedom and only the control plane is allowed to send changes. default is free comand mode.
 * The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
