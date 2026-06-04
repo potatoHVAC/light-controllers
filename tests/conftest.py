@@ -48,10 +48,13 @@ from fakes.bus import BUS                                     # noqa: E402
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path):
     """Fresh bus + clock per test, and keep storage writes out of the repo."""
+    import random
+    random.seed(0)          # deterministic mesh nonces/jitter so sims don't flake
     BUS.reset()
     harness.reset_clock(0)
     import storage, device_config
     storage._FILE = str(tmp_path / 'state.json')
     device_config._FILE = str(tmp_path / 'device_config.json')
+    device_config._TMP  = str(tmp_path / 'device_config.json.tmp')
     yield
     BUS.reset()

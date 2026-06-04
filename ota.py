@@ -16,11 +16,11 @@ DISCOVER_TIMEOUT_MS = 1000
 UPDATE_DIR   = '/update'
 UPDATE_READY = '/update_ready'
 
-_YELLOW = (128, 128, 0)
+_ORANGE = (255, 80, 0)   # "writing flash, do not power off" — matches main.py
 _GREEN  = (0, 255, 0)
 _BLACK  = (0, 0, 0)
 
-_PROGRESS_CYCLE = [1, 2, 3, 0]
+_DANGER_LEDS    = 3
 _DONE_FLASHES   = 3
 _DONE_FLASH_MS  = 300
 
@@ -40,10 +40,12 @@ def _flash_done(np):
         _busy_wait(_DONE_FLASH_MS)
 
 
-def _set_progress(np, leds_on):
+def _danger(np):
+    """Solid orange on the first few LEDs: a flash write is in progress and
+    power must not be cut. Clamped to the strip length (works on a 1-LED strip)."""
     np.fill(_BLACK)
-    for i in range(leds_on):
-        np[i] = _YELLOW
+    for i in range(min(_DANGER_LEDS, len(np))):
+        np[i] = _ORANGE
     np.write()
 
 
@@ -161,10 +163,11 @@ def run(np=None, feed=None):
             pass
         os.mkdir(UPDATE_DIR)
 
-        for i, f in enumerate(files):
-            if np:
-                _set_progress(np, _PROGRESS_CYCLE[i % 4])
+        # Orange "do not power off" marker for the whole flash-writing phase.
+        if np:
+            _danger(np)
 
+        for i, f in enumerate(files):
             if feed:
                 feed()
             path = f['path']

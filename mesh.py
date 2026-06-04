@@ -143,8 +143,11 @@ class Mesh:
     def send_identify(self, target):
         self._send_typed('identify', target=target)
 
-    def send_solo_request(self, target):
-        self._send_typed('solo_request', target=target)
+    def send_solo_request(self, target, dim=None):
+        self._send_typed('solo_request', target=target, dim=dim)
+
+    def send_solo_tag(self, tag, dim=None, active=True):
+        self._send_typed('solo_tag', tag=tag, dim=dim, active=active)
 
     def send_default(self):
         self._send_typed('default')

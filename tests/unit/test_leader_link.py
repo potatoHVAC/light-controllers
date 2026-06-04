@@ -9,6 +9,8 @@ class FakeMesh:
     def __init__(self):
         self.autonomous = False
         self.mac = 'aabbcc'
+        self._fw = None
+        self._cfg = None
 
     def set_autonomous(self, v):
         self.autonomous = v
@@ -16,6 +18,9 @@ class FakeMesh:
 
 class FakeController:
     is_leader = True
+    theme = 'red'
+    scene = 'solid'
+    dim = 1.0
 
 
 class FakeBridge:
@@ -24,10 +29,14 @@ class FakeBridge:
     def __init__(self, mesh):
         self.mesh = mesh
         self.hint = None
+        self._connected = False   # like the real Bridge: False until tick_connect wins
 
     def set_channel_hint(self, ch): self.hint = ch
-    def is_connected(self):         return self.connect_result is True
-    def tick_connect(self, now):    return self.connect_result
+    def is_connected(self):         return self._connected
+    def tick_connect(self, now):
+        if self.connect_result is True:
+            self._connected = True
+        return self.connect_result
     def check_server_alive(self, now): return True
     def tick(self):                 return None
     def forward(self, pkt):         pass

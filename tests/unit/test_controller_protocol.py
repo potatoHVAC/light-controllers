@@ -75,3 +75,54 @@ def test_default_applies_personal_default():
     ctrl.update(harness.now())
     assert ctrl.status()['theme'] == 'red'
     assert ctrl.status()['scene'] == 'breathe'
+
+
+def test_solo_respects_master_dim():
+    """Soloing sits at the master level, not full brightness."""
+    ctrl, mesh = _controller()
+    ctrl.set_master_dim(0.5)
+    ctrl.solo()
+    assert ctrl.status()['dim'] == 0.5
+
+
+def test_solo_message_dims_non_soloist_to_target():
+    ctrl, mesh = _controller()
+    _inject(0, {'type': 'solo', 'sender': 'other', 'seq': 1, 'active': True, 'dim': 0.3})
+    BUS.bind(0)
+    ctrl.update(harness.now())
+    assert ctrl._is_soloist is False
+    assert ctrl.status()['dim'] == 0.3
+
+
+def test_solo_tag_matching_controller_solos():
+    ctrl, mesh = _controller(personal_default={'tags': ['horns']})
+    _inject(0, {'type': 'solo_tag', 'sender': 'srv', 'seq': 1,
+                'tag': 'horns', 'dim': 0.2, 'active': True})
+    BUS.bind(0)
+    ctrl.update(harness.now())
+    assert ctrl._is_soloist is True
+    assert ctrl.status()['dim'] == 1.0          # master default, full
+
+
+def test_solo_tag_non_matching_controller_dims():
+    ctrl, mesh = _controller(personal_default={'tags': ['drums']})
+    _inject(0, {'type': 'solo_tag', 'sender': 'srv', 'seq': 1,
+                'tag': 'horns', 'dim': 0.2, 'active': True})
+    BUS.bind(0)
+    ctrl.update(harness.now())
+    assert ctrl._is_soloist is False
+    assert ctrl.status()['dim'] == 0.2          # master(1.0) * 0.2
+
+
+def test_solo_tag_release_fades_back():
+    ctrl, mesh = _controller(personal_default={'tags': ['drums']})
+    _inject(0, {'type': 'solo_tag', 'sender': 'srv', 'seq': 1,
+                'tag': 'horns', 'dim': 0.2, 'active': True})
+    BUS.bind(0)
+    ctrl.update(harness.now())
+    assert ctrl._solo_active is True
+    _inject(0, {'type': 'solo_tag', 'sender': 'srv', 'seq': 2,
+                'tag': 'horns', 'active': False})
+    BUS.bind(0)
+    ctrl.update(harness.now())
+    assert ctrl._solo_active is False

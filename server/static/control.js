@@ -39,6 +39,13 @@ function onDimChange(input) {
   api.post('dim', { dim: input.value / 100 });
 }
 
+function onBgDimChange() {
+  // Re-send the active solo so non-soloists update live to the new level.
+  if (!bridgeConnected) return;
+  if (soloing)         api.post('solo', { mac: soloing, dim: bgDim() });
+  else if (soloingTag) api.post('solo_tag', { tag: soloingTag, dim: bgDim() });
+}
+
 function toggleLightsOff() {
   if (lightsOffActive) {
     releaseLightsOff(true);

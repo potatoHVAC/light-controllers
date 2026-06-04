@@ -56,17 +56,26 @@ def test_random_scene_keeps_theme_clears_scene(tmp_path):
 
 def test_solo_and_identify_are_targeted(tmp_path):
     api, _, link = _api(tmp_path)
-    api.solo_controller('mac1')
-    assert link.sent[-1] == ({'type': 'solo_request'}, 'mac1')
+    api.solo_controller('mac1', dim=0.25)
+    cmd, target = link.sent[-1]
+    assert cmd['type'] == 'solo_request' and cmd['dim'] == 0.25 and target == 'mac1'
     api.identify('mac2')
     assert link.sent[-1] == ({'type': 'identify'}, 'mac2')
+
+
+def test_solo_tag_broadcasts(tmp_path):
+    api, _, link = _api(tmp_path)
+    api.solo_tag('horns', dim=0.3)
+    cmd, target = link.sent[-1]
+    assert cmd['type'] == 'solo_tag' and cmd['tag'] == 'horns'
+    assert cmd['dim'] == 0.3 and target is None   # broadcast, not targeted
 
 
 def test_default_user_and_show(tmp_path):
     api, db, link = _api(tmp_path)
     api.default_user()
     assert link.sent[-1][0]['type'] == 'default'
-    db.update_defaults(show_theme='blue', show_scene='breathe')
+    db.update_defaults(unassigned_theme='blue', unassigned_scene='breathe')
     api.default_show()
     cmd, _ = link.sent[-1]
     assert cmd['theme'] == 'blue' and cmd['scene'] == 'breathe'

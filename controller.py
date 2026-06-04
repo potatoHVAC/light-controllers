@@ -66,9 +66,11 @@ class Controller:
         self._save_pending = False
         self._save_after = 0
         self._scenes = []
-        self._dim = 1.0
+        self._dim = 1.0                # the brightness actually applied to strips
+        self._master_dim = 1.0         # master-dimmer level (the soloist's ceiling)
         self._is_soloist = False
         self._solo_active = False
+        self._solo_bg = solo_dim       # non-soloist level as a fraction of master
         self._solo_dim_target = solo_dim
         self._last_solo_hb_ms = None   # tracks last heartbeat carrying solo dim
         self._is_leader = False
@@ -189,7 +191,7 @@ class Controller:
                     color=tuple(color) if color else None,
                 )
                 if not self._is_soloist:
-                    self.set_dim(msg.get('dim', 1.0))
+                    self.set_master_dim(msg.get('dim', 1.0))
                 self._handle_leader_heartbeat(msg, now_ms)
                 self._finish_start(now_ms)
                 return True
@@ -242,36 +244,81 @@ class Controller:
                 self._network_dim(), color=self._theme_color(),
             )
 
-    def solo(self):
-        """Broadcast solo: this controller stays full, all others dim."""
+    def solo(self, bg=None):
+        """Become the soloist: stay at the master-dim level, dim all others to a
+        fraction of it. bg is that fraction (0..1); defaults to the configured
+        solo_dim. The soloist does NOT jump to full brightness — it respects the
+        master dimmer."""
+        frac = self._solo_dim if bg is None else max(0.0, min(1.0, bg))
         self._is_soloist = True
         self._solo_active = True
-        self._solo_dim_target = self._solo_dim
+        self._solo_bg = frac
+        self._solo_dim_target = self._master_dim * frac   # absolute level for others
         self._fade_dur = 0            # cancel any in-progress release fade
-        self.set_dim(1.0)
+        self.set_dim(self._master_dim)
         if self._network:
-            self._network.send_solo(active=True, dim=self._solo_dim)
+            self._network.send_solo(active=True, dim=self._solo_dim_target)
 
     def release_solo(self):
-        """Release solo: fade back to full brightness across the mesh."""
+        """Release solo: fade back to the master-dim level across the mesh."""
         self._is_soloist = False
         self._solo_active = False
         self._start_release_fade(time.ticks_ms())
         if self._network:
             self._network.send_solo(active=False)
 
+    def apply_solo_tag(self, tag, frac, active, now_ms):
+        """Tag-group solo: every controller decides locally. If this controller's
+        tag list contains `tag` it becomes a soloist at the master level; all others
+        dim to `frac` of master. `frac` is a fraction (0..1); defaults to solo_dim.
+        active=False releases (same as a normal solo release)."""
+        if not active:
+            self._is_soloist = False
+            self._solo_active = False
+            self._start_release_fade(now_ms)
+            return
+        frac = self._solo_dim if frac is None else max(0.0, min(1.0, frac))
+        in_group = tag in (self._personal_default.get('tags') or [])
+        self._solo_active = True
+        self._fade_dur = 0
+        self._solo_bg = frac
+        self._solo_dim_target = self._master_dim * frac   # the follower level
+        if in_group:
+            self._is_soloist = True
+            self.set_dim(self._master_dim)
+        else:
+            self._is_soloist = False
+            self.set_dim(self._solo_dim_target)
+
     def set_dim(self, factor):
-        """Apply a brightness ceiling to all strips."""
+        """Apply a brightness ceiling to all strips (the value actually shown)."""
         self._dim = max(0.0, min(1.0, factor))
         self._fixture.set_dim(self._dim)
 
+    def set_master_dim(self, factor):
+        """Set the master-dimmer level. Applied immediately unless this controller
+        is currently a dimmed non-soloist (it holds the solo background level until
+        the soloist re-broadcasts). The soloist rescales and re-announces so its
+        followers track the new master level."""
+        self._master_dim = max(0.0, min(1.0, factor))
+        if self._fade_dur > 0:
+            self._fade_to = self._master_dim     # redirect an in-progress fade
+            return
+        if self._is_soloist:
+            self.set_dim(self._master_dim)
+            self._solo_dim_target = self._master_dim * self._solo_bg
+            if self._network:
+                self._network.send_solo(active=True, dim=self._solo_dim_target)
+        elif not self._solo_active:
+            self.set_dim(self._master_dim)
+
     def _start_release_fade(self, now_ms):
-        """Begin a non-blocking fade from the current dim up to full brightness."""
+        """Begin a non-blocking fade from the current dim up to the master level."""
         if self._solo_release_fade_ms <= 0:
-            self.set_dim(1.0)
+            self.set_dim(self._master_dim)
             return
         self._fade_from     = self._dim
-        self._fade_to       = 1.0
+        self._fade_to       = self._master_dim
         self._fade_start_ms = now_ms
         self._fade_dur      = self._solo_release_fade_ms
 
@@ -323,6 +370,11 @@ class Controller:
                         color=tuple(color) if color else None,
                     )
                     if not self._is_soloist and self._fade_dur <= 0:
+                        # Apply the heartbeat-carried dim, but never treat it as a
+                        # master change: a solo heartbeat carries the follower level,
+                        # and a controller that missed the solo packet must not adopt
+                        # that as its master (it would get stuck dim after release).
+                        # _master_dim is authoritative only from explicit dim msgs.
                         incoming_dim = msg.get('dim', 1.0)
                         self.set_dim(incoming_dim)
                         if self._solo_active and incoming_dim < 1.0:
@@ -338,7 +390,10 @@ class Controller:
                         self.apply_identify(now_ms)
                 elif msg_type == 'solo_request':
                     if self._targeted(msg):
-                        self.solo()
+                        self.solo(msg.get('dim'))
+                elif msg_type == 'solo_tag':
+                    self.apply_solo_tag(msg.get('tag'), msg.get('dim'),
+                                        msg.get('active', True), now_ms)
                 elif msg_type == 'default':
                     self.apply_default(now_ms)
                 elif msg_type == 'set_config':
@@ -401,16 +456,16 @@ class Controller:
             if msg.get('active', False):
                 self._is_soloist = False
                 self._solo_active = True
-                self._solo_dim_target = msg.get('dim', self._solo_dim)
+                # The soloist already scaled by master, so this is absolute.
+                self._solo_dim_target = msg.get('dim', self._master_dim * self._solo_dim)
                 self._fade_dur = 0                 # cancel any release fade
                 self.set_dim(self._solo_dim_target)
             else:
                 self._is_soloist = False
                 self._solo_active = False
-                self._start_release_fade(now_ms)   # fade back to full
+                self._start_release_fade(now_ms)   # fade back to master level
         elif msg_type == 'dim':
-            if not self._is_soloist and self._fade_dur <= 0:
-                self.set_dim(msg.get('dim', 1.0))
+            self.set_master_dim(msg.get('dim', 1.0))
 
     def _apply_network_state(self, theme_name, scene_name, now_ms, color=None):
         """Apply incoming theme/scene by name. Falls back to a solid color scene

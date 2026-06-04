@@ -36,8 +36,28 @@ MAX_LOOP_ERRORS  = 50
 ERROR_LEDS  = 3
 ERROR_COLOR = (25, 0, 0)
 
+# "Update in progress — do not power off" marker. Deliberately bright orange
+# (unlike the dim red fault marker) so a person knows not to pull power during a
+# flash-writing window (the A/B swap below, and OTA). Sized to DANGER_LEDS, which
+# lights whatever LEDs are physically present — works on a 3-LED or a 1-LED strip.
+DANGER_LEDS  = 3
+DANGER_COLOR = (255, 80, 0)
+
 _UPDATE_READY = '/update_ready'
 _UPDATE_DIR   = '/update'
+
+
+def _danger_on(leds=DANGER_LEDS):
+    """Light the first few primary-strip LEDs full orange to signal a flash
+    write is in progress and power must not be cut. Best-effort; never raises."""
+    try:
+        import neopixel
+        np = neopixel.NeoPixel(Pin(PRIMARY_PIN), leds)
+        for i in range(leds):
+            np[i] = DANGER_COLOR
+        np.write()
+    except Exception:
+        pass
 
 
 def _copy_file(src, dst):
@@ -82,6 +102,7 @@ def _rm_tree(path):
 # mid-swap is safe — /update/ always holds the complete verified copy.
 try:
     os.stat(_UPDATE_READY)
+    _danger_on()              # orange: writing flash, do not power off
     _copy_tree(_UPDATE_DIR, '', skip='main.py')
     _copy_file(_UPDATE_DIR + '/main.py', '/main.py')
     _rm_tree(_UPDATE_DIR)
@@ -172,12 +193,12 @@ def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
             )
     elif cmd_type == 'dim':
         dim = float(cmd.get('dim', 1.0))
-        ctrl.set_dim(dim)
+        ctrl.set_master_dim(dim)
         if ctrl._network:
             ctrl._network.send_dim(dim)
     elif cmd_type == 'solo':
         if cmd.get('active', False):
-            ctrl.solo()
+            ctrl.solo(cmd.get('dim'))
         else:
             ctrl.release_solo()
     elif cmd_type == 'ota_update':
@@ -195,9 +216,14 @@ def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
     elif cmd_type == 'solo_request':
         target = cmd.get('target')
         if ctrl._network:
-            ctrl._network.send_solo_request(target)
+            ctrl._network.send_solo_request(target, cmd.get('dim'))
         if target is None or (ctrl._network and target == ctrl._network.mac):
-            ctrl.solo()
+            ctrl.solo(cmd.get('dim'))
+    elif cmd_type == 'solo_tag':
+        active = cmd.get('active', True)
+        if ctrl._network:
+            ctrl._network.send_solo_tag(cmd.get('tag'), cmd.get('dim'), active)
+        ctrl.apply_solo_tag(cmd.get('tag'), cmd.get('dim'), active, now_ms)
     elif cmd_type == 'default':
         if ctrl._network:
             ctrl._network.send_default()

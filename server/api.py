@@ -225,5 +225,6 @@ def _wire_config(cfg):
         'default_theme': cfg.get('default_theme'),
         'default_scene': cfg.get('default_scene'),
         'default_color': cfg.get('default_color'),
+        'tags': cfg.get('tags', []),   # needed so controllers can answer tag-group solos
         'version': cfg.get('config_version', 1),
     }

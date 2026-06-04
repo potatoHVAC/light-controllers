@@ -20,6 +20,12 @@ fi
 PORT=$1
 
 echo "Wiping device..."
+# Delete everything except boot.py. Removing main.py is the key step: the
+# hardware watchdog is only started inside main.py, so once it is gone the
+# device reboots into a plain REPL with no watchdog running — giving the file
+# copy below unlimited time. The delete itself is fast (well under the 8s
+# watchdog window), so it completes even while the old main.py's watchdog is
+# still ticking.
 mpremote connect "$PORT" exec "$(cat <<'EOF'
 import os
 
@@ -36,16 +42,16 @@ for f in os.listdir('/'):
     if f not in keep:
         try: rmtree('/' + f)
         except: pass
-
-# Feed the WDT so the file copies below start with a fresh 8-second window.
-# Once started by main.py the hardware WDT can't be stopped, only fed.
-try:
-    from machine import WDT
-    WDT().feed()
-except Exception:
-    pass
 EOF
 )"
+
+# Hard reset with the dedicated subcommand (not machine.reset() inside exec,
+# which makes mpremote follow the reboot and hang on the device's REPL). This
+# resets and disconnects cleanly so the watchdog is gone before we copy.
+mpremote connect "$PORT" reset
+
+# Wait for the reboot: ~boot.py's 2s sleep plus reset/enumeration margin.
+sleep 4
 
 echo "Copying files..."
 mpremote connect "$PORT" \
@@ -53,18 +59,7 @@ mpremote connect "$PORT" \
   cp main.py :main.py + \
   cp color.py button.py strip.py fixture.py storage.py controller.py themes.py mesh.py ota.py secrets.py bridge.py config.py auth.py log.py leader_link.py recovery.py device_config.py :
 
-# Feed WDT again before creating the patterns directory and copying pattern files,
-# which together can exceed the 8-second window.
-mpremote connect "$PORT" exec "$(cat <<'EOF'
-try:
-    from machine import WDT
-    WDT().feed()
-except Exception:
-    pass
-import os
-os.mkdir('patterns')
-EOF
-)"
+mpremote connect "$PORT" exec "import os; os.mkdir('patterns')"
 
 CMD=(mpremote connect "$PORT")
 for f in patterns/*.py; do

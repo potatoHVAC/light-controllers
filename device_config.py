@@ -6,8 +6,10 @@ via a set_config command; the controller saves it and reboots to apply (a strip
 layout change needs a fresh setup).
 """
 import json
+import os
 
 _FILE = 'device_config.json'
+_TMP  = _FILE + '.tmp'
 
 
 def load():
@@ -20,12 +22,21 @@ def load():
 
 
 def save(data):
-    """Persist the config dict. Returns True on success."""
+    """Persist the config dict atomically. Returns True on success.
+
+    Writes a temp file then renames over the target — os.rename is atomic on
+    littlefs, so a power loss mid-write leaves the previous config intact rather
+    than a half-written (and unparseable) file."""
     try:
-        with open(_FILE, 'w') as f:
+        with open(_TMP, 'w') as f:
             json.dump(data, f)
+        os.rename(_TMP, _FILE)
         return True
     except Exception:
+        try:
+            os.remove(_TMP)
+        except Exception:
+            pass
         return False
 
 

@@ -29,7 +29,7 @@ button.solo { background: var(--solo); }
 button.tag-solo { background: #222; border: 1px solid var(--line); }
 button.tag-solo.active { background: var(--solo); border-color: var(--solo); }
 button.release-solo { background: #3a3a3a; }
-button.release-solo.available { background: #1a4a1a; border: 1px solid var(--ok); }
+button.release-solo.available { background: var(--solo); border: 1px solid var(--err); }
 button.wide { width: 100%; flex: none; }
 button.warnbtn { background: #3a2a0a; border: 1px solid var(--warn); }
 button.danger { background: #3a1a1a; border: 1px solid var(--err); }
