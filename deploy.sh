@@ -36,6 +36,14 @@ for f in os.listdir('/'):
     if f not in keep:
         try: rmtree('/' + f)
         except: pass
+
+# Feed the WDT so the file copies below start with a fresh 8-second window.
+# Once started by main.py the hardware WDT can't be stopped, only fed.
+try:
+    from machine import WDT
+    WDT().feed()
+except Exception:
+    pass
 EOF
 )"
 
@@ -45,7 +53,18 @@ mpremote connect "$PORT" \
   cp main.py :main.py + \
   cp color.py button.py strip.py fixture.py storage.py controller.py themes.py mesh.py ota.py secrets.py bridge.py config.py auth.py log.py leader_link.py recovery.py device_config.py :
 
-mpremote connect "$PORT" exec "import os; os.mkdir('patterns')"
+# Feed WDT again before creating the patterns directory and copying pattern files,
+# which together can exceed the 8-second window.
+mpremote connect "$PORT" exec "$(cat <<'EOF'
+try:
+    from machine import WDT
+    WDT().feed()
+except Exception:
+    pass
+import os
+os.mkdir('patterns')
+EOF
+)"
 
 CMD=(mpremote connect "$PORT")
 for f in patterns/*.py; do
