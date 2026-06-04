@@ -64,3 +64,17 @@ button.lights-off-active { background: var(--err); border: 1px solid var(--err);
 .tag { font-size: 11px; background: #243; color: #9d9; padding: 1px 6px; border-radius: 8px; }
 .strips { display: flex; gap: 6px; }
 .strips input { width: 33%; }
+.tag-wrap { position: relative; display: flex; gap: 6px; margin-top: 4px; }
+.tag-wrap input { flex: 1; margin-top: 0; }
+.tag-wrap .tag-btn { flex: none; padding: 8px 14px; font-size: 16px; line-height: 1; }
+.tag-picker {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 20;
+  background: var(--card); border: 1px solid var(--accent); border-radius: 6px;
+  padding: 8px; display: flex; flex-wrap: wrap; gap: 4px;
+  max-height: 120px; overflow-y: auto;
+}
+.tag-chip {
+  font-size: 11px; background: #243; color: #9d9;
+  padding: 3px 8px; border-radius: 8px; cursor: pointer; border: none; flex: none;
+}
+.tag-chip:hover { background: #354; }

@@ -80,10 +80,14 @@
       <input type="number" id="cfg_s2" min="0" placeholder="strip 2">
       <input type="number" id="cfg_s3" min="0" placeholder="strip 3">
     </div>
-    <label>Tags (comma separated — e.g. percussion, low)</label>
-    <input type="text" id="cfg_tags" placeholder="agnostic groupings">
-    <label>Default theme</label><select id="cfg_theme"></select>
-    <label>Default scene</label><input type="text" id="cfg_scene" placeholder="scene name">
+    <label>Tags</label>
+    <div class="tag-wrap">
+      <input type="text" id="cfg_tags">
+      <button type="button" class="tag-btn" onclick="toggleTagPicker()">+</button>
+      <div id="tag-picker" class="tag-picker" style="display:none"></div>
+    </div>
+    <label>Default theme</label><select id="cfg_theme" onchange="sceneOptions(el('cfg_scene'), this.value, '')"></select>
+    <label>Default scene</label><select id="cfg_scene"></select>
     <label>Default color (hex, optional)</label><input type="text" id="cfg_color" placeholder="#ff0000">
     <div class="row" style="margin-top:12px">
       <button onclick="saveConfig()">Save &amp; Push</button>

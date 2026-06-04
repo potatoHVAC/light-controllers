@@ -10,6 +10,41 @@ function themeOptions(sel, value) {
   if (value) sel.value = value;
 }
 
+function sceneOptions(sel, themeName, currentScene) {
+  const theme = THEMES.find(t => t.name === themeName);
+  const scenes = theme ? theme.scenes : [];
+  sel.innerHTML = '<option value="">—</option>' +
+    scenes.map(s => `<option value="${s}">${s}</option>`).join('');
+  if (currentScene) sel.value = currentScene;
+}
+
+function toggleTagPicker() {
+  const picker = el('tag-picker');
+  if (picker.style.display === 'none') {
+    api.get('tags').then(tags => {
+      picker.innerHTML = tags.length
+        ? tags.map(t => `<button type="button" class="tag-chip" onclick="addTag('${escapeHtml(t)}')">${escapeHtml(t)}</button>`).join('')
+        : '<span class="muted" style="font-size:11px">No tags yet</span>';
+      picker.style.display = 'flex';
+    });
+  } else {
+    picker.style.display = 'none';
+  }
+}
+
+function addTag(name) {
+  const input = el('cfg_tags');
+  const existing = input.value.split(',').map(t => t.trim()).filter(Boolean);
+  if (!existing.includes(name)) {
+    input.value = [...existing, name].join(', ');
+  }
+}
+
+// Close tag picker when clicking outside the tag-wrap
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tag-wrap')) el('tag-picker').style.display = 'none';
+});
+
 function setBridgeState(connected) {
   bridgeConnected = connected;
   el('bridge-banner').classList.toggle('hidden', connected);
@@ -140,7 +175,7 @@ function editController(mac) {
     el('cfg_s3').value = cfg ? cfg.strip3_leds : 0;
     el('cfg_tags').value  = cfg ? (cfg.tags || []).join(', ') : '';
     themeOptions(el('cfg_theme'), cfg && cfg.default_theme);
-    el('cfg_scene').value = (cfg && cfg.default_scene) || '';
+    sceneOptions(el('cfg_scene'), cfg && cfg.default_theme, cfg && cfg.default_scene);
     el('cfg_color').value = (cfg && cfg.default_color) || '';
 
     const anchor = el('ctrl-' + mac);

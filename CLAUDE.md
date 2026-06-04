@@ -159,8 +159,6 @@ in heartbeats so the admin page can flag outdated units.
 The following categories are unrefined ideas and todo items. Keep the list titles even if all items have been removed.
 
 - **Change Requests:**
-* A list of tags can be shown from a button that doesn't change the page. those can be selected and added to the tags field. Typing tags also auto completes with known tags, unknown tags get added automatically. 
-* default scene selection is also a drop down with all known themes. 
 * add a button next to a controller to force the leader to switch to that controller. This should not prevent a reelection incase that controller goes down. Just acts like that controller won a new election. 
 * Add all active tags as buttons below the release soloist button on the control page that cause all controllers with that tag to be in solo mode. This should be done through the packet as, soloist to trumpet tags and those controllers should check the tag against their internal tag list and turn them selves on accordingly. I don't want individually addressed packets. Just one mass packet that lets everyone know who the target solo group is. 
 * Add a slider to change the relative brightness for non solo member at the top of the solo button area. This is relative to the soloist lighting which could have been controlled by the master dimmer above. 
@@ -168,13 +166,14 @@ The following categories are unrefined ideas and todo items. Keep the list title
 * I want a toggle at the top of the actioins that switches between mesh freedom and only the control plane is allowed to send changes. default is free comand mode.
 * The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
 * create a special controller tag named "leader" that when applied to a controller makes them a priority for handling the bridge
-* remove the text from the tag input field for controller edits. 
 * Create a special controller tag named "no-solo" that appears red. this tag removes the controller from the solo grid. It does not prevent that controller from participating in tag based solo groups. 
 * Add a special tag description page to the config edit page just before the controller section
 * discuss a system of saving some amount of logs after each show and keeping a few shows worth of logs before removing them. 
 * Add special tag "player" 
 * controllers without a user defined nickname should have priority as bridge. the order is leader label -> mac address name -> nicknamed -> player
 * add a color wheel for picking default colors with an optional text input below. 
+* assume any controller without custom light settings has 3 strings with 150 lights per string
+* put the tag picker in alphabetical order where special tags are first followed by a line break, then regular user tags below. 
 
 - **Larger Ideas:**
 * I see were tracking when controllers go offline. I like that behavior on the main page. I also want that on the admin page to gray out missing controllers that have previously been seen this session. On the admin page make an option to remove that user from the show (do not delete that persons config). I want a deploy button next to each controller that opens a drop down that starts with a list of all known controllers for that show that are not responding then a line break and a list of all known configs in alphabetical order. If a new controller is brought online and a config is deployed, automatically remove the disconnected controller. If a config is deployed multiple times then those two controllers are allowed to operate as duplicates of each other. Put those in the list order based on which ever controller came online first. Controller configs should have a toggle that when true means they are important and should follow this missing controller behavior. False means they just disappear from the pages. Default should be any named controller is true, any unnamed controller is false.
