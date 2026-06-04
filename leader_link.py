@@ -70,6 +70,9 @@ class LeaderLink:
                     self._hint_ch = None
             return
 
+        if self.bridge.is_connected():
+            return  # already connected — _on_connected already fired
+
         result = self.bridge.tick_connect(now_ms)
         if result is True:
             self._on_connected()
