@@ -35,7 +35,8 @@ class BridgeLink:
         self._seq            = 0
         self._ack_queue      = queue.Queue()
         self._lock           = threading.Lock()
-        self._last_packet    = 0.0
+        self._last_packet          = 0.0
+        self._last_bridge_connect  = 0.0  # debounce repeated bridge_connected logs
         self.registry        = {}     # mac -> info dict
         self.mesh_state = {
             'theme': None, 'scene': None, 'dim': 1.0,
@@ -97,7 +98,10 @@ class BridgeLink:
 
         mtype = msg.get('type')
         if mtype == 'bridge_connected':
-            self._log.write(f'Bridge connected from {addr[0]}', 'ok')
+            now = time.time()
+            if now - self._last_bridge_connect > 10:
+                self._log.write(f'Bridge connected from {addr[0]}', 'ok')
+                self._last_bridge_connect = now
             return
         if not msg.get('fwd'):
             return

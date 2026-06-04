@@ -45,7 +45,7 @@ input[type=text], input[type=number], select {
 .ctrl .meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .ctrl .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
 .dot.online { background: var(--ok); } .dot.outdated { background: var(--warn); }
-#log { font-family: monospace; font-size: 12px; max-height: 220px; overflow-y: auto; }
+#log, #server-log, #mesh-log { font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
 .entry { padding: 1px 0; }
 .entry.ok { color: var(--ok); } .entry.info { color: var(--muted); }
 .entry.warn { color: var(--warn); } .entry.err { color: var(--err); }
