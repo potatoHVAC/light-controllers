@@ -1,7 +1,7 @@
 """Bounded in-memory log shown on the admin page.
 
-Each entry carries a source tag ('server' or 'mesh') so the two streams can
-be displayed separately without maintaining two separate buffers."""
+Server and mesh entries are kept in separate buffers so a noisy mesh
+cannot evict server events."""
 from datetime import datetime
 
 MAX_ENTRIES = 300
@@ -9,15 +9,23 @@ MAX_ENTRIES = 300
 
 class ServerLog:
     def __init__(self):
-        self._entries = []
+        self._server = []
+        self._mesh   = []
 
     def write(self, msg, level='info', source='server'):
         ts = datetime.now().strftime('%H:%M:%S')
-        self._entries.append({'type': level, 'msg': f'[{ts}] {msg}', 'source': source})
-        if len(self._entries) > MAX_ENTRIES:
-            self._entries = self._entries[-MAX_ENTRIES:]
+        entry = {'type': level, 'msg': f'[{ts}] {msg}'}
+        buf = self._mesh if source == 'mesh' else self._server
+        buf.append(entry)
+        if len(buf) > MAX_ENTRIES:
+            del buf[0]
         print(f'[{ts}] {msg}')
 
     def entries(self, limit=200, source=None):
-        entries = self._entries if source is None else [e for e in self._entries if e.get('source') == source]
-        return entries[-limit:]
+        if source == 'mesh':
+            return self._mesh[-limit:]
+        if source == 'server':
+            return self._server[-limit:]
+        combined = sorted(self._server + self._mesh,
+                          key=lambda e: e['msg'])   # timestamp prefix makes msg sortable
+        return combined[-limit:]
