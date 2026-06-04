@@ -118,7 +118,10 @@ class BridgeLink:
             if msg.get('scene'):
                 self.mesh_state['scene'] = msg['scene']
             if 'dim' in msg:
-                self.mesh_state['dim'] = msg['dim']
+                # master_dim is the true master level; dim may be lower during solo.
+                # Prefer master_dim so the control panel always shows the master
+                # level, not the solo background level.
+                self.mesh_state['dim'] = msg.get('master_dim', msg['dim'])
             if sender:
                 info['theme'] = msg.get('theme', info['theme'])
                 info['scene'] = msg.get('scene', info['scene'])

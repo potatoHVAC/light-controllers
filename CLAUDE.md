@@ -206,8 +206,6 @@ The following categories are unrefined ideas and todo items. Keep the list title
 - **BUG Report:**
 * The everyone personal (change name to personal defaults) momentarily changes the controllers before they change back. I'm assuming the heartbeat is overriding the change because it doesn't understand how users could be doing something different. 
 * a controller with fewer than 3 lights on its main string seems to prevent a firmware deployment. I assume it's because it's missing enough leds. This should not be blocking and a controller should be fine with missing some or all of the downloading lights. 
-* The dim displayed at top flickers between the solo dim and the master setting when solo mode is engaged. that dim should only show the master dim. I suspect this is heartbeat related.
-* the tag solo modes are not working properly. flashing full instead of respecting the master dim. 
 
 - **Architecture Clarification Questions:**
 

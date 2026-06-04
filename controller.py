@@ -110,6 +110,10 @@ class Controller:
         return self._dim
 
     @property
+    def master_dim(self):
+        return self._master_dim
+
+    @property
     def ota_requested(self):
         """True if an ota_update message arrived. Clears on read."""
         flag = self._ota_requested
@@ -181,6 +185,7 @@ class Controller:
         msg = self._network.tick(
             self._theme_name(), self._scene_name(),
             self._network_dim(), now_ms, color=self._theme_color(),
+            master_dim=self._master_dim,
         )
         if msg:
             msg_type = msg.get('type')
@@ -191,7 +196,7 @@ class Controller:
                     color=tuple(color) if color else None,
                 )
                 if not self._is_soloist:
-                    self.set_master_dim(msg.get('dim', 1.0))
+                    self.set_master_dim(msg.get('master_dim', msg.get('dim', 1.0)))
                 self._handle_leader_heartbeat(msg, now_ms)
                 self._finish_start(now_ms)
                 return True
@@ -359,6 +364,7 @@ class Controller:
                 self._network_dim(),
                 now_ms,
                 color=self._theme_color(),
+                master_dim=self._master_dim,
             )
             if msg:
                 received = msg
@@ -370,15 +376,22 @@ class Controller:
                         color=tuple(color) if color else None,
                     )
                     if not self._is_soloist and self._fade_dur <= 0:
-                        # Apply the heartbeat-carried dim, but never treat it as a
-                        # master change: a solo heartbeat carries the follower level,
-                        # and a controller that missed the solo packet must not adopt
-                        # that as its master (it would get stuck dim after release).
-                        # _master_dim is authoritative only from explicit dim msgs.
-                        incoming_dim = msg.get('dim', 1.0)
-                        self.set_dim(incoming_dim)
-                        if self._solo_active and incoming_dim < 1.0:
-                            self._last_solo_hb_ms = now_ms
+                        incoming_dim    = msg.get('dim', 1.0)
+                        incoming_master = msg.get('master_dim', incoming_dim)
+                        # Every heartbeat carries both dim (the current applied
+                        # level — may be the solo background) and master_dim (the
+                        # true ceiling). During solo, only trust a heartbeat if the
+                        # sender is itself dimmed (dim < master_dim), meaning they
+                        # received the solo packet. Ignore full-brightness heartbeats
+                        # from controllers that missed it — otherwise they restore us
+                        # to full. Outside solo, both values are the master level.
+                        if self._solo_active:
+                            if incoming_dim < incoming_master:
+                                self.set_dim(incoming_dim)
+                                self._last_solo_hb_ms = now_ms
+                        else:
+                            self.set_dim(incoming_dim)
+                            self._master_dim = incoming_master
                     self._handle_leader_heartbeat(msg, now_ms)
                 elif msg_type in ('solo', 'dim'):
                     self._handle_dim_msg(msg, now_ms)
