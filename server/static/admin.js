@@ -1,7 +1,8 @@
 // Admin: mesh stats, firmware deploy, controller list, config editor, defaults.
-let THEMES = [];
-let bridgeConnected = false;
-let activeEditorMac = null;
+let THEMES   = [];
+let DEFAULTS = {};
+let bridgeConnected  = false;
+let activeEditorMac  = null;
 
 function themeOptions(sel, value) {
   sel.innerHTML = '<option value="">—</option>' +
@@ -68,7 +69,16 @@ function renderControllers(list) {
   const named   = list.filter(c => c.has_nickname);
   const unnamed = list.filter(c => !c.has_nickname);
 
-  const renderCard = c => `
+  const renderCard = c => {
+    const diffParts = [
+      c.default_theme && c.default_theme !== DEFAULTS.unassigned_theme ? c.default_theme : null,
+      c.default_scene && c.default_scene !== DEFAULTS.unassigned_scene ? c.default_scene : null,
+      c.default_color && c.default_color !== DEFAULTS.unassigned_color ? c.default_color : null,
+    ].filter(Boolean);
+    const defaultsLine = diffParts.length
+      ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${diffParts.map(escapeHtml).join(' · ')}</div>`
+      : '';
+    return `
     <div id="ctrl-${c.mac}" style="${c.online ? '' : 'opacity:0.45'}">
       <div class="card" style="margin:0 0 8px 0;padding:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -77,6 +87,7 @@ function renderControllers(list) {
             <b>${escapeHtml(c.nickname)}</b>
             ${c.leader ? '<span class="pill on">leader</span>' : ''}
             ${c.outdated && c.online ? '<span class="pill warn">outdated</span>' : ''}
+            ${defaultsLine}
             <div class="muted">${c.mac}${c.fw ? ' · fw ' + c.fw : ''}</div>
             ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
           </div>
@@ -87,6 +98,7 @@ function renderControllers(list) {
         </div>
       </div>
     </div>`;
+  };
 
   let html = named.map(renderCard).join('');
   if (named.length && unnamed.length) {
@@ -178,10 +190,23 @@ function deleteConfig() {
 
 // ── defaults ─────────────────────────────────────────────────────────────────
 
+function toggleDefaultsEdit() {
+  const editor = el('defaults-editor');
+  editor.style.display = editor.style.display === 'none' ? 'block' : 'none';
+}
+
+function renderDefaultsDisplay(d) {
+  const leds = [d.unassigned_strip1_leds, d.unassigned_strip2_leds, d.unassigned_strip3_leds]
+    .filter(Boolean);
+  const parts = [
+    d.unassigned_theme, d.unassigned_scene, d.unassigned_color,
+    leds.length ? leds.join('/') + ' LEDs' : null,
+  ].filter(Boolean).join(' · ') || '—';
+  el('defaults-display').innerHTML = `<b>${escapeHtml(parts)}</b>`;
+}
+
 function saveDefaults() {
   const fields = {
-    show_theme: el('def_show_theme').value || null,
-    show_scene: el('def_show_scene').value.trim() || null,
     unassigned_theme: el('def_theme').value || null,
     unassigned_scene: el('def_scene').value.trim() || null,
     unassigned_color: el('def_color').value.trim() || null,
@@ -190,7 +215,12 @@ function saveDefaults() {
     unassigned_strip3_leds: +el('def_s3').value || 0,
   };
   el('defstatus').textContent = 'Saving…';
-  api.post('defaults', { fields }).then(() => el('defstatus').textContent = 'Saved.');
+  api.post('defaults', { fields }).then(d => {
+    DEFAULTS = d;
+    renderDefaultsDisplay(d);
+    el('defstatus').textContent = 'Saved.';
+    el('defaults-editor').style.display = 'none';
+  });
 }
 
 // ── refresh ───────────────────────────────────────────────────────────────────
@@ -215,14 +245,16 @@ function refresh() {
   }
 
   api.get('defaults').then(d => {
-    themeOptions(el('def_show_theme'), d.show_theme);
-    el('def_show_scene').value = d.show_scene || '';
-    themeOptions(el('def_theme'), d.unassigned_theme);
-    el('def_scene').value = d.unassigned_scene || '';
-    el('def_color').value = d.unassigned_color || '';
-    el('def_s1').value = d.unassigned_strip1_leds;
-    el('def_s2').value = d.unassigned_strip2_leds;
-    el('def_s3').value = d.unassigned_strip3_leds;
+    DEFAULTS = d;
+    renderDefaultsDisplay(d);
+    if (el('defaults-editor').style.display === 'none') {
+      themeOptions(el('def_theme'), d.unassigned_theme);
+      el('def_scene').value = d.unassigned_scene || '';
+      el('def_color').value = d.unassigned_color || '';
+      el('def_s1').value = d.unassigned_strip1_leds;
+      el('def_s2').value = d.unassigned_strip2_leds;
+      el('def_s3').value = d.unassigned_strip3_leds;
+    }
   }).catch(() => {});
 
   api.get('server_log').then(e => renderLog(e, 'server-log')).catch(() => {});

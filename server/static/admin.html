@@ -21,6 +21,30 @@
   </div>
 
   <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 style="margin:0">Show Defaults</h2>
+      <button style="font-size:11px;padding:4px 8px;flex:none" onclick="toggleDefaultsEdit()">Edit</button>
+    </div>
+    <div id="defaults-display" class="muted">Loading…</div>
+    <div id="defaults-editor" style="display:none;margin-top:12px">
+      <label>Show theme</label><select id="def_theme"></select>
+      <label>Show scene</label><input type="text" id="def_scene">
+      <label>Show color (hex)</label><input type="text" id="def_color">
+      <label>Show strip LED counts</label>
+      <div class="strips">
+        <input type="number" id="def_s1" min="0">
+        <input type="number" id="def_s2" min="0">
+        <input type="number" id="def_s3" min="0">
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button onclick="saveDefaults()">Save</button>
+        <button onclick="toggleDefaultsEdit()">Cancel</button>
+      </div>
+      <div id="defstatus" class="muted" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Firmware version <button style="font-size:11px;padding:4px 8px;flex:none" onclick="toggleHashDebug()">debug</button></h2>
     <div id="hashdebug" style="display:none;margin-top:8px">
       <div id="hashdetail" class="muted">Loading…</div>
@@ -67,23 +91,6 @@
       <button onclick="closeEditor()">Close</button>
     </div>
     <div id="cfgstatus" class="muted" style="margin-top:6px"></div>
-  </div>
-
-  <div class="card">
-    <h2>Defaults for unassigned controllers</h2>
-    <label>Show theme</label><select id="def_show_theme"></select>
-    <label>Show scene</label><input type="text" id="def_show_scene">
-    <label>Unassigned default theme</label><select id="def_theme"></select>
-    <label>Unassigned default scene</label><input type="text" id="def_scene">
-    <label>Unassigned default color (hex)</label><input type="text" id="def_color">
-    <label>Unassigned strip LED counts</label>
-    <div class="strips">
-      <input type="number" id="def_s1" min="0">
-      <input type="number" id="def_s2" min="0">
-      <input type="number" id="def_s3" min="0">
-    </div>
-    <button class="wide" style="margin-top:12px" onclick="saveDefaults()">Save Defaults</button>
-    <div id="defstatus" class="muted" style="margin-top:6px"></div>
   </div>
 
   <div class="card">

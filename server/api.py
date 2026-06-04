@@ -56,6 +56,9 @@ class Api:
                 'fw': info['fw'],
                 'outdated': info['fw'] != version,
                 'tags': (cfg or {}).get('tags', []),
+                'default_theme': (cfg or {}).get('default_theme'),
+                'default_scene': (cfg or {}).get('default_scene'),
+                'default_color': (cfg or {}).get('default_color'),
             }
         for cfg in self._db.list_controllers():
             if cfg['mac'] not in out:
@@ -66,6 +69,9 @@ class Api:
                     'assigned': True, 'online': False, 'leader': False,
                     'theme': None, 'scene': None, 'dim': 1.0,
                     'fw': None, 'outdated': True, 'tags': cfg.get('tags', []),
+                    'default_theme': cfg.get('default_theme'),
+                    'default_scene': cfg.get('default_scene'),
+                    'default_color': cfg.get('default_color'),
                 }
         # Named controllers first (alphabetical), then unnamed (MAC order).
         return sorted(out.values(), key=lambda c: (
@@ -146,9 +152,9 @@ class Api:
 
     def default_show(self):
         d = self._db.get_defaults()
-        if not d.get('show_theme'):
+        if not d.get('unassigned_theme'):
             return False
-        return self._change(d['show_theme'], d.get('show_scene'))
+        return self._change(d['unassigned_theme'], d.get('unassigned_scene'))
 
     def default_user(self):
         """Send every controller to its own stored personal default scene."""
