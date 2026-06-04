@@ -51,7 +51,7 @@ class Controller:
     def __init__(self, fixture, themes, network=None,
                  solo_dim=0.2, save_delay_ms=2000,
                  election_timeout_ms=5000, leader_reelect_ms=10000,
-                 solo_release_fade_ms=1000, identify_ms=5000,
+                 solo_release_fade_ms=1000, identify_ms=2000,
                  personal_default=None):
         self._fixture = fixture
         self._themes = themes
@@ -76,6 +76,7 @@ class Controller:
         self._is_leader = False
         self._ota_requested = False
         self._reboot_requested = False
+        self._personal_mode = False    # True after apply_default; heartbeats don't override
         self._identify_until_ms = None
         # Dim fade state (used when releasing solo). _fade_dur == 0 means idle.
         self._fade_from = 1.0
@@ -138,7 +139,10 @@ class Controller:
         self._identify_until_ms = time.ticks_add(now_ms, self._identify_ms)
 
     def apply_default(self, now_ms):
-        """Go to this controller's stored personal default theme/scene/color."""
+        """Go to this controller's stored personal default theme/scene/color.
+        Enters personal mode so heartbeats from other controllers (which may
+        have different personal defaults) don't immediately override this state.
+        Personal mode clears on the next explicit change command."""
         d = self._personal_default
         if d.get('default_theme'):
             color = d.get('default_color')
@@ -146,6 +150,10 @@ class Controller:
                 d['default_theme'], d.get('default_scene'), now_ms,
                 color=_parse_color(color),
             )
+        # Always enter personal mode — even with no configured defaults — so
+        # heartbeats from other controllers showing their own personal defaults
+        # don't override what this controller is currently displaying.
+        self._personal_mode = True
 
     def apply_set_config(self, config):
         """Persist a pushed config and request a reboot to apply it."""
@@ -186,15 +194,20 @@ class Controller:
             self._theme_name(), self._scene_name(),
             self._network_dim(), now_ms, color=self._theme_color(),
             master_dim=self._master_dim,
+            personal=self._personal_mode,
         )
         if msg:
             msg_type = msg.get('type')
             if msg_type in ('heartbeat', 'change'):
                 color = msg.get('color')
-                self._apply_network_state(
-                    msg.get('theme'), msg.get('scene'), now_ms,
-                    color=tuple(color) if color else None,
-                )
+                if msg.get('personal') and not self._personal_mode:
+                    # Mesh is in personal mode at boot — join it and apply own defaults.
+                    self.apply_default(now_ms)
+                else:
+                    self._apply_network_state(
+                        msg.get('theme'), msg.get('scene'), now_ms,
+                        color=tuple(color) if color else None,
+                    )
                 if not self._is_soloist:
                     self.set_master_dim(msg.get('master_dim', msg.get('dim', 1.0)))
                 self._handle_leader_heartbeat(msg, now_ms)
@@ -339,23 +352,27 @@ class Controller:
             self.set_dim(self._fade_from + (self._fade_to - self._fade_from) * frac)
 
     def _render_identify(self, now_ms):
-        """Blink the first few LEDs of the primary strip orange (non-blocking)."""
+        """Overlay the identify blink on top of the running pattern.
+
+        The normal pattern renders and shows first (the rest of the strip stays
+        live). Then we overwrite the first few LEDs with the orange blink and
+        call show() again — the brief intermediate state is imperceptible."""
         strip = self._fixture.strips[0]
-        strip.fill((0, 0, 0))
-        if (now_ms // IDENTIFY_BLINK_MS) % 2 == 0:
-            for i in range(min(IDENTIFY_LEDS, strip.num_leds)):
-                strip[i] = IDENTIFY_COLOR
+        color = IDENTIFY_COLOR if (now_ms // IDENTIFY_BLINK_MS) % 2 == 0 else (0, 0, 0)
+        for i in range(min(IDENTIFY_LEDS, strip.num_leds)):
+            strip[i] = color
         strip.show()
 
     def update(self, now_ms):
         """Advance the current scene and flush to hardware. Call every loop tick.
         Returns the raw mesh message received this tick (or None) so the caller
         can forward it to the bridge without coupling mesh to bridge."""
-        if self._identify_until_ms is not None and time.ticks_diff(now_ms, self._identify_until_ms) < 0:
-            self._render_identify(now_ms)     # identify overrides the scene briefly
-        else:
-            self._identify_until_ms = None
-            self._fixture.update(now_ms)
+        self._fixture.update(now_ms)
+        if self._identify_until_ms is not None:
+            if time.ticks_diff(now_ms, self._identify_until_ms) < 0:
+                self._render_identify(now_ms)   # overlay blink on top of pattern
+            else:
+                self._identify_until_ms = None
         received = None
         if self._network:
             msg = self._network.tick(
@@ -365,16 +382,28 @@ class Controller:
                 now_ms,
                 color=self._theme_color(),
                 master_dim=self._master_dim,
+                personal=self._personal_mode,
             )
             if msg:
                 received = msg
                 msg_type = msg.get('type')
                 if msg_type in ('heartbeat', 'change'):
                     color = msg.get('color')
-                    self._apply_network_state(
-                        msg.get('theme'), msg.get('scene'), now_ms,
-                        color=tuple(color) if color else None,
-                    )
+                    if msg_type == 'change':
+                        # Explicit change command — always apply and exit personal mode.
+                        self._personal_mode = False
+                        self._apply_network_state(
+                            msg.get('theme'), msg.get('scene'), now_ms,
+                            color=tuple(color) if color else None,
+                        )
+                    elif msg.get('personal') and not self._personal_mode:
+                        # Mesh is in personal mode — join it and apply own defaults.
+                        self.apply_default(now_ms)
+                    elif not self._personal_mode:
+                        self._apply_network_state(
+                            msg.get('theme'), msg.get('scene'), now_ms,
+                            color=tuple(color) if color else None,
+                        )
                     if not self._is_soloist and self._fade_dur <= 0:
                         incoming_dim    = msg.get('dim', 1.0)
                         incoming_master = msg.get('master_dim', incoming_dim)

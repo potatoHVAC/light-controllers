@@ -118,16 +118,18 @@ class LeaderLink:
             return
         self._self_hb_at = now_ms
         pkt = {
-            'type':      'heartbeat',
-            'sender':    self._mesh.mac,
-            'theme':     controller.theme,
-            'scene':     controller.scene,
-            'dim':       controller.dim,
+            'type':       'heartbeat',
+            'sender':     self._mesh.mac,
+            'theme':      controller.theme,
+            'scene':      controller.scene,
+            'dim':        controller.dim,
             'master_dim': controller.master_dim,
-            'fw':        self._mesh._fw,
-            'cfg':       self._mesh._cfg,
-            'leader':    True,
+            'fw':         self._mesh._fw,
+            'cfg':        self._mesh._cfg,
+            'leader':     True,
         }
+        if controller._personal_mode:
+            pkt['personal'] = True
         if self._mesh._upd_fail is not None:
             pkt['upd_fail'] = self._mesh._upd_fail
         self.bridge.forward(pkt)

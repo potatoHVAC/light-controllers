@@ -18,11 +18,12 @@ class FakeMesh:
 
 
 class FakeController:
-    is_leader  = True
-    theme      = 'red'
-    scene      = 'solid'
-    dim        = 1.0
-    master_dim = 1.0
+    is_leader      = True
+    theme          = 'red'
+    scene          = 'solid'
+    dim            = 1.0
+    master_dim     = 1.0
+    _personal_mode = False
 
 
 class FakeBridge:

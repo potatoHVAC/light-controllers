@@ -163,7 +163,42 @@ in heartbeats so the admin page can flag outdated units.
 
 - **I2C button expander:** Replace the two direct GPIO buttons with a PCF8574 or similar I2C GPIO expander. Gives 8 inputs on 2 shared pins, detects simultaneous presses for combo gestures, unaffected by WiFi ADC noise. Current two-button layout (GPIO33 scene/theme, GPIO27 soloist) should map directly into the expander with room to add independent mode, leader declaration, and other show controls as dedicated buttons. Button reading is isolated to the Button class and main.py — the hardware swap should be contained there.
 
-- **Independent mode:** Dual button hold toggles a controller in and out of independent mode. In independent mode the controller ignores incoming mesh commands and does not broadcast its own changes — it runs its own patterns locally without affecting or being affected by the group. On exit, the controller re-syncs to the current mesh state. The control panel should also be able to pull a controller out of independent mode remotely.
+- **Independent mode — spec:**
+
+  A controller in independent mode runs freely without being affected by or affecting the rest of the rig. It is distinct from personal mode (which is a mesh-wide coordinated state). Key behaviors:
+
+  **What it does:**
+  - Runs its own patterns; button presses change its own state only.
+  - Continues forwarding mesh packets normally (relay/leader responsibilities unaffected).
+  - Continues sending heartbeats with an `independent: True` flag so the mesh knows the unit is present.
+  - The heartbeat does NOT carry the controller's current theme/scene as authoritative state — others must not sync to it.
+  - It still respects the master dim at all times.
+
+  **What it ignores:**
+  - Incoming theme/scene changes (`change`, `heartbeat` state sync).
+  - Solo commands (`solo`, `solo_request`, `solo_tag`).
+  - Dim commands.
+  - `default` (personal mode) commands.
+  - Does NOT propagate independent mode to other controllers — no other controller enters independent mode because of this one.
+
+  **Entering:**
+  - Dual button hold (physical toggle on the controller).
+  - Targeted `enter_independent` command from the control plane.
+
+  **Exiting:**
+  - Same dual button hold (toggle).
+  - Broadcast `exit_independent` command (exits ALL independent controllers at once).
+  - Targeted `exit_independent` command (exits one specific controller).
+  - On exit the controller re-syncs to current mesh state (theme/scene/dim) from the next heartbeat.
+
+  **Admin UI:**
+  - A card on the admin page listing all currently independent controllers (detected from the `independent: True` heartbeat flag).
+  - "Release All" button sends a broadcast `exit_independent`.
+  - Per-controller "Release" button sends a targeted `exit_independent`.
+
+  **Relationship to personal mode:**
+  - Personal mode: mesh-wide, coordinated, propagates via heartbeat flag, still obeys solo/dim/change.
+  - Independent mode: per-controller, isolated, does NOT propagate, ignores everything except explicit exit commands.
 
 - **Admin page — structured packet view:** The `/admin` page exists (mesh stats, firmware version + deploy all/outdated, controller list with identify + config editor, defaults, combined server+mesh log). Remaining: a structured per-packet stream — sender MAC, message type, theme/scene/dim, sequence number, timestamp — rather than just log lines.
 

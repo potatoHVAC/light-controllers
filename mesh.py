@@ -260,12 +260,13 @@ class Mesh:
             'dim': dim,
         })
 
-    def tick(self, theme, scene, dim, now_ms, color=None, master_dim=None):
+    def tick(self, theme, scene, dim, now_ms, color=None, master_dim=None, personal=False):
         """Send heartbeat if due, fire or suppress pending responses, return any valid incoming message."""
         if time.ticks_diff(now_ms, self._last_heartbeat_ms) >= self.HEARTBEAT_MS:
             self._last_heartbeat_ms = now_ms
             self._seq += 1
-            self._broadcast('heartbeat', theme, scene, dim, color=color, master_dim=master_dim)
+            self._broadcast('heartbeat', theme, scene, dim, color=color,
+                            master_dim=master_dim, personal=personal)
 
         if self._pending_retry:
             msg_type = self._pending_retry[0]
@@ -295,7 +296,8 @@ class Mesh:
                 del self._pending[nonce]
             elif time.ticks_diff(now_ms, entry['deadline']) >= 0:
                 self._seq += 1
-                self._broadcast('heartbeat', theme, scene, dim, nonce=nonce, color=color, master_dim=master_dim)
+                self._broadcast('heartbeat', theme, scene, dim, nonce=nonce, color=color,
+                                master_dim=master_dim, personal=personal)
                 self._last_heartbeat_ms = now_ms
                 del self._pending[nonce]
 
@@ -353,7 +355,7 @@ class Mesh:
 
         return data
 
-    def _broadcast(self, msg_type, theme, scene, dim=1.0, nonce=None, color=None, master_dim=None):
+    def _broadcast(self, msg_type, theme, scene, dim=1.0, nonce=None, color=None, master_dim=None, personal=False):
         self._pkt['type']   = msg_type
         self._pkt['seq']    = self._seq
         self._pkt['theme']  = theme
@@ -363,6 +365,10 @@ class Mesh:
             self._pkt['master_dim'] = master_dim
         elif 'master_dim' in self._pkt:
             del self._pkt['master_dim']
+        if personal:
+            self._pkt['personal'] = True
+        elif 'personal' in self._pkt:
+            del self._pkt['personal']
         if self._is_leader:
             self._pkt['leader'] = True
             if self._autonomous:
