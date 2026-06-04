@@ -60,12 +60,9 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 ## Collaboration
 
 - Review all code, comments, and documentation for cultural sensitivity before writing. Avoid terms with historical exclusionary connotations (e.g. main/follower instead of master/slave, allowlist/blocklist instead of whitelist/blacklist).
-
-
 - When the user proposes an approach that conflicts with best practices or has meaningful tradeoffs, push back with a clear argument before proceeding. Don't just implement what's asked if there's a good reason not to.
-- After completing work, check the Upcoming Work section and remove any items that were just addressed.
+- After completing work, check the backlog and remove any items that were just addressed.
 - If the user has manually edited a file, re-read it before touching it and flag what they changed. Never silently overwrite user edits. If an improvement is worth making to user-written code, raise it as a suggestion rather than just doing it.
-
 
 ## Scripts
 
@@ -83,6 +80,10 @@ All controllers run ESP-NOW and form a peer-to-peer mesh. Key behaviors to suppo
 - **Patterns must only write to strips via the public API** — `strip[i]`, `strip.fill()`, `strip.draw_pulse()`. Never access `strip._np` directly. The strip maintains a separate unscaled buffer so network dim scaling is applied once at show() time without compounding across ticks. Bypassing the public API breaks this.
 
 - **The main loop must feed the hardware watchdog every iteration.** A stalled tick resets the chip (`WDT_TIMEOUT_MS`, ~8s). Any in-loop operation that can block longer than the timeout must feed the watchdog itself — the OTA download does this via a `feed` callback. The loop body is wrapped so a transient per-tick exception is logged and skipped; a persistent run of errors or a fatal error shows a small dim fault marker (first few LEDs at ~10% red) and resets rather than dropping to a dark REPL on stage. Keep any failure indicator small and dim — never blast a full strip at full brightness.
+
+# Architecture (how it works)
+
+Reference documentation for the shipped system. The capability index is in **Feature Outline** below; this section is the "how."
 
 ## Code
 
@@ -114,7 +115,7 @@ are the trusted base — updated only by a wired `deploy.sh`, never by OTA.
   pointer — there is no separate staging copy and no boot-time file copy.
 - A rollback records `update_failed` (slot + version), surfaced on the admin page.
 
-## Server
+### Server
 
 The laptop/phone server is a stdlib-only Python package under `server/` (no web
 framework — it runs zero-install on a show laptop or in Docker). Run it with
@@ -132,14 +133,124 @@ framework — it runs zero-install on a show laptop or in Docker). Run it with
   shared `app.css` / `common.js`. Vanilla JS, mobile-first, PWA manifest. No build step.
 
 Per-controller config lives in `device_config.json` on the device (strip layout,
-nickname, personal default theme/scene/color) — it is NOT firmware, survives OTA,
-and is pushed via a targeted `set_config` command (the controller saves it and
+nickname, personal default theme/scene/color, tags) — it is NOT firmware, survives
+OTA, and is pushed via a targeted `set_config` command (the controller saves it and
 reboots to apply). Controllers report their firmware version and config version
 in heartbeats so the admin page can flag outdated units.
 
-## Phase Two — Future Architecture (do not start yet; keep in mind)
+# Feature Outline (shipped)
 
-Big structural work for after the current phase. The **leader failsafe is never eliminated** in any of these — light-controller election always remains the bottom backstop.
+Completed capabilities (an index — the "how" lives in **Architecture** above). **When a group finishes, add its capability here and delete its todos from the backlog.**
+
+- **ESP-NOW mesh & leader election** — peer-to-peer mesh, first-boot election with MAC tiebreak, ~10s reelection on leader loss, autonomous mode when no server, channel convergence on hotspot connect. Admin "Make Leader" forces a bridge handoff (LeaderLink releases then re-acquires the bridge).
+- **A/B firmware slots & crash recovery** — two slots, fault-counting boot supervisor, proven-slot update targeting, rollback with an admin "update failed" flag, never refuses to boot.
+- **OTA** — downloads into the inactive/unproven slot and flips the pointer; watchdog-fed; orange "do not power off" marker.
+- **Server (control panel + admin)** — stdlib package, SQLite per-controller configs + tags + defaults, signed UDP bridge, live registry/mesh-state, bridge-offline UI gating.
+- **Show control** — next/random theme & scene, master dim, lights-off toggle, default show, personal defaults.
+- **Solo** — individual soloist grid + tag-group solo, relative background dim (heartbeat carries both `dim` and `master_dim`), release; `no-solo` tag.
+- **Personal mode** — mesh-wide "everyone show your own default" with heartbeat propagation; distinct from the (specced) independent mode.
+- **Per-controller config** — device_config.json (survives OTA), targeted set_config push + reboot, nickname/strips/tags/personal defaults, config-version reporting; blackout before a config-apply reboot.
+- **Controller identity** — identified by MAC (short form = last 6 hex); admin lists online + assigned controllers and can `identify` a unit (orange blink overlaid on the running pattern, first 3 LEDs, 2s).
+- **Special tags** — leader / button-box / light / no-solo, color-coded, with a picker and reference card (election behavior is specced, not yet wired).
+- **Firmware version tracking** — SHA-256 hash, deploy all/outdated, deploy all configs, hash-debug view.
+
+# Grouped Work (current backlog)
+
+Worked in numbered groups. **On finishing a group:** delete its todos here, add the capability to the Feature Outline above, and produce a completed report + a commit message. The Roadmap and Phase Two (at the bottom) are tracked separately and not part of this backlog.
+
+### Group 1 — Shows system
+- Show configs in their own DB table (not the `defaults` singleton): name, default theme/scene/color (pushed to the mesh, not a firmware change), and an expected-controller roster. A controller can appear in multiple shows; shows have no strip counts (those belong to the controller). Shows can carry tags (reserved). Selecting the active show pushes its defaults to the mesh.
+- Separate show/controller editor page: starts with the show list; add (fresh show section with save/discard), edit (inline under the show with save/discard), delete (confirm), deploy button per show.
+
+### Group 2 — Roster & offline tracking (builds on Group 1)
+- Admin: gray out previously-seen offline controllers; per-config "important" toggle (default true for named, false for unnamed) controlling whether a missing controller persists or disappears; remove-from-show (keep the config); per-controller deploy dropdown listing non-responding roster members, then a separator, then all configs A–Z; deploying a config to a new unit auto-removes the matching disconnected one; deploying the same config to multiple online units lets them run as duplicates (ordered by who came online first).
+
+### Group 3 — Identity & default-config refactor
+- Short MAC in its own field; nickname becomes optional (none allowed); remove `has_custom_nickname`; display name falls back to short MAC; switch to first 6 hex of the MAC unless problematic. (Cleans up solo-grid filtering — only real nicknames live in the nickname field.)
+- Default to 3 strips × 150 LEDs when a controller has no custom light settings.
+- Give every controller a built-in default config as a fallback / control target; make its presence hash-aware so a missing one reads as out of date. (Coordinate with Group 4's dual-hash.)
+
+### Group 4 — Repo & integrity refactor
+- Mirror the on-device slot layout in the repo; move all scripts (incl. those in subdirs) to `/bin` while keeping root-level device files at the repo root.
+- Dual firmware hash: existing hash tracks only OTA-updatable files; a new, unadvertised hash tracks the wired-only sensitive files (the trusted base). On mismatch, flag the controller bold red on the admin page with a "use a hardline and reflash fresh" message.
+- Database validation to prevent committing bad data.
+
+### Group 5 — Control authority
+- Toggle at the top of the actions: free-mesh mode vs control-plane-only (only the control plane may send changes). Default: free command mode.
+
+### Group 6 — Solo / dim / color UI polish
+- Color wheel for default colors, with an optional text input below.
+- Dimmer-slider shadow showing the previous dim position while the lights-off toggle is engaged.
+- Tag-solo highlights the soloists it activates in the grid; clicking one of those overrides the tag solo and hands control to that single soloist; a further click disables solo as normal.
+
+### Group 7 — Pattern positioning
+- Optional start/end light offset: skip the first N LEDs; end is either an absolute light position or "Z lights ahead of start" (count inclusive of the start), toggleable.
+
+### Group 8 — Advanced custom actions (large / future-leaning)
+- Record a series of commands + intervals and save as a custom action ("listening" mode).
+- Custom tag sections that create special tags with custom actions/behaviors (significant lift).
+- A scene-sync tag plus a distributed syncing system to keep tagged scenes aligned.
+
+### Group 9 — Scale prep (small; when 20+ controllers)
+- OTA association jitter: MAC-based stagger before the WiFi connect in ota.py (`mac[5] * 20ms`, 0–5s spread). Config pushes don't need it (ACK-serialized server-side).
+
+**Capture inbox** — raw ideas land here, then get folded into a group.
+- (empty)
+
+**Architecture clarification questions** — discussion, not tasks.
+* Can the future phone app run the server on its own and broadcast a hotspot from the app, or is a dongle/Pi better?
+* Can any config field (show or user) cause a controller to fail and stop working? Do we have tests covering that? (Ties to Group 4's db validation.)
+
+# Roadmap (longer-term, not yet grouped)
+
+Future work and specs beyond the current backlog, but before Phase Two. Pull items into a numbered group when they become active.
+
+- **Tag/group commands:** the tag↔MAC mapping exists (`db.macs_with_tag`) and tag-group *solo* ships; remaining is turning a tag into other group actions (e.g. "dim all horns", set a theme by tag).
+
+- **Config auto-sync on check-in:** when a controller checks in reporting an older config version than the DB holds (e.g. it was offline when the config changed), the server should push the current config automatically rather than only on edit.
+
+- **OTA passive self-update:** have a controller compare its firmware version on boot and self-update without a push (the push deploy stays as the override). The version/hash/report/deploy-outdated infrastructure already ships.
+
+- **Sync-wait fade to black:** while a controller waits for its first heartbeat at boot (before mesh sync), slowly fade the strips to black rather than holding them dark and static — a visible "alive and waiting" cue. Fade completes before any default/fallback state would show.
+
+- **Error-mode display:** richer fault indication on the strips themselves — distinct patterns for different conditions (network loss, boot failure) beyond the existing dim-red fault marker.
+
+- **Admin structured packet view:** a structured per-packet stream on `/admin` — sender MAC, message type, theme/scene/dim, sequence number, timestamp — instead of only log lines.
+
+- **Monitoring and metrics:** per-controller health over time — last-seen, packet counts, command success/failure rates, leader-election history. Exportable for post-show review; groundwork for "controller went silent" alerts.
+
+- **I2C button expander:** replace the two direct GPIO buttons with a PCF8574-style expander — 8 inputs on 2 shared pins, simultaneous-press combos, immune to WiFi ADC noise. Maps the current two-button layout in with room for independent mode, leader declaration, etc. Button reading is isolated to the Button class + main.py, so the swap is contained.
+
+- **Web/phone configuration interface:** ESP32 hosts a WiFi AP for show-day adjustments without redeployment. Must be secured (auth, ideally role-based) so the audience / a band member can't trigger main-level overrides.
+
+- **Beat-sync patterns:** patterns that accept BPM and pulse on the beat. BPM set manually or broadcast from the main.
+
+- **Venue WiFi push:** a server command pushes WiFi credentials to all controllers over the hotspot so they join the venue network directly. Needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
+
+- **Rename LIGHTRIG_OTA network:** the shared hotspot SSID still says `LIGHTRIG_OTA` but now serves both OTA and show control. Rename to something generic (e.g. `LIGHTRIG`) once the final name is decided.
+
+### Spec — Independent mode
+
+A controller in independent mode runs freely without being affected by or affecting the rest of the rig. Distinct from personal mode (a mesh-wide coordinated state).
+
+- **Does:** runs its own patterns (buttons change its own state only); keeps forwarding mesh packets (relay/leader duties unaffected); keeps sending heartbeats with an `independent: True` flag; the heartbeat does NOT carry its theme/scene as authoritative; still respects master dim.
+- **Ignores:** incoming theme/scene (`change`/heartbeat sync), solo (`solo`/`solo_request`/`solo_tag`), dim, and `default`. Does NOT propagate — no other controller goes independent because of this one.
+- **Enter:** dual-button hold, or a targeted `enter_independent` command.
+- **Exit:** dual-button hold (toggle), a broadcast `exit_independent` (releases ALL), or a targeted `exit_independent` (releases one). On exit it re-syncs to current mesh state from the next heartbeat.
+- **Admin UI:** a card listing all independent controllers (from the flag) with a "Release All" and per-controller "Release".
+
+### Spec — Tiered leader election (Hybrid A)
+
+Problem: the elected leader bridges the mesh to the server, and ESP-NOW + WiFi share one radio, so the bridge work stutters that controller's rendering. Fix: prefer no-light / designated devices for the bridge so light controllers stay fast — while never removing the hardware-free failover to a light controller.
+
+- **Priority (high → low):** `leader`-tagged → `button-box`-tagged (no lights) → light controllers (default / `light`-tagged, the failsafe). MAC breaks ties within a tier. *(In "leader → mac → button-box → light", `mac` is read as the in-tier tiebreaker, not a separate tier — confirm if you meant otherwise.)*
+- **Behavior:** each controller computes its own tier from its tags; declares leader only if no higher-tier peer is online; defers to higher tiers (and to a winning MAC in-tier); hands off if a higher-tier device appears (pre-emption on the next reelection window, with hysteresis); if all higher-tier devices drop, a light controller takes over.
+- **Plumbing:** heartbeats carry the sender's tier (a small int) — `mesh.py` `_broadcast`, `controller.py` `tick_start` / `_become_leader` / reelection. A `button-box`-tagged (or zero-strip) controller builds an empty fixture and skips rendering.
+- **Tags:** `leader` / `button-box` / `light` are reserved election-role tags (UI/colors/reference card already shipped). `no-solo` is a behavior flag.
+
+# Phase Two — Future Architecture (do not start yet; keep in mind)
+
+Big structural work for after the current phase and roadmap. The **leader failsafe is never eliminated** in any of these — light-controller election always remains the bottom backstop.
 
 - **Pi/ESP32 hybrid leader boxes (topmost bridge tier):** A Raspberry Pi hosts the server in Docker and holds the configs locally. It serves the control plane over DNS/hostname so phones and laptops connect by name instead of an IP. One or more attached ESP32s drive the ESP-NOW mesh as the bridge (the Pi talks to them over USB/serial). When built, these boxes become the highest election tier — the `leader` tag is moved onto them. Multiple ESP32s per Pi allow additional zones and automatic failover among the Pi's own bridge radios. This is the eventual home of the `leader` tag from the Hybrid A spec.
 
@@ -150,134 +261,3 @@ Big structural work for after the current phase. The **leader failsafe is never 
 - **Leader / authority hierarchy:** Distinct from the elected bridge leader. A designated authority (the Pi/server) can issue commands all controllers must obey regardless of local button presses. The `type` field in the mesh packet and `apply_state` are the designed extension points.
 
 - **Art-Net integration:** A main node (or bridge device) receives Art-Net DMX-over-IP from professional lighting consoles and translates to ESP-NOW commands. Keep protocol boundaries clean so this layer adds without restructuring the core network.
-
-## Long-Term Roadmap (not immediate priority)
-
-- **Web/phone configuration interface:** ESP32 hosts a WiFi access point for show-day adjustments without redeployment. Must be secured so audience members cannot interfere — authentication required, ideally with role-based access so a band member cannot accidentally trigger main-level overrides.
-
-- **Beat-sync patterns:** Patterns that accept BPM as a parameter and pulse on the beat. BPM set manually or broadcast from the main controller.
-
-- **OTA passive self-update:** The server now hashes the firmware into a version, the OTA manifest carries it, controllers store it (`firmware_version`) and report it, and the admin page flags/deploys outdated units. Remaining: have a controller compare versions on boot and self-update without a push (the push deploy stays as the override).
-
-- **Error mode display:** Use the addressable strips themselves as the error indicator. On network failure, boot failure, or other fault conditions, display a distinct error pattern on the strips rather than a separate status LED.
-
-- **Per-member fixture configs — remaining work:** The DB stores per-controller nickname, strip lengths, agnostic tags, and a personal default theme/scene/color; the `default` packet sends everyone to their stored default; `set_config` pushes a config to one controller. Still to do: pattern tuning per member, favorites (deliberately deferred), and **tag/group commands** (e.g. "solo all drummers", "dim all horns") — the tag↔MAC mapping exists in `db.macs_with_tag`, but no API/command turns a tag into a targeted group action yet.
-
-- **Config auto-sync on check-in:** Controllers report their config version in heartbeats, and saving a config pushes `set_config` to that controller. Still to do: when a controller checks in reporting an older config version than the DB holds (e.g. it was offline when the config changed), the server should push the current config automatically rather than only on edit.
-
-- **Controller identity and assignment — done:** Controllers are identified by MAC (short form = last 6 hex). The admin page lists online + assigned controllers, pushes configs, and can `identify` a unit (orange blink). Remaining identity work is folded into the two items above.
-
-- **Sync wait fade to black:** While a controller waits for a heartbeat at boot (before it has synced to the mesh), slowly fade the strips to black rather than keeping them dark and static. Gives a visual indication that the controller is alive and waiting. Fade should complete before the controller would start showing a default or fallback state.
-
-- **I2C button expander:** Replace the two direct GPIO buttons with a PCF8574 or similar I2C GPIO expander. Gives 8 inputs on 2 shared pins, detects simultaneous presses for combo gestures, unaffected by WiFi ADC noise. Current two-button layout (GPIO33 scene/theme, GPIO27 soloist) should map directly into the expander with room to add independent mode, leader declaration, and other show controls as dedicated buttons. Button reading is isolated to the Button class and main.py — the hardware swap should be contained there.
-
-- **Independent mode — spec:**
-
-  A controller in independent mode runs freely without being affected by or affecting the rest of the rig. It is distinct from personal mode (which is a mesh-wide coordinated state). Key behaviors:
-
-  **What it does:**
-  - Runs its own patterns; button presses change its own state only.
-  - Continues forwarding mesh packets normally (relay/leader responsibilities unaffected).
-  - Continues sending heartbeats with an `independent: True` flag so the mesh knows the unit is present.
-  - The heartbeat does NOT carry the controller's current theme/scene as authoritative state — others must not sync to it.
-  - It still respects the master dim at all times.
-
-  **What it ignores:**
-  - Incoming theme/scene changes (`change`, `heartbeat` state sync).
-  - Solo commands (`solo`, `solo_request`, `solo_tag`).
-  - Dim commands.
-  - `default` (personal mode) commands.
-  - Does NOT propagate independent mode to other controllers — no other controller enters independent mode because of this one.
-
-  **Entering:**
-  - Dual button hold (physical toggle on the controller).
-  - Targeted `enter_independent` command from the control plane.
-
-  **Exiting:**
-  - Same dual button hold (toggle).
-  - Broadcast `exit_independent` command (exits ALL independent controllers at once).
-  - Targeted `exit_independent` command (exits one specific controller).
-  - On exit the controller re-syncs to current mesh state (theme/scene/dim) from the next heartbeat.
-
-  **Admin UI:**
-  - A card on the admin page listing all currently independent controllers (detected from the `independent: True` heartbeat flag).
-  - "Release All" button sends a broadcast `exit_independent`.
-  - Per-controller "Release" button sends a targeted `exit_independent`.
-
-  **Relationship to personal mode:**
-  - Personal mode: mesh-wide, coordinated, propagates via heartbeat flag, still obeys solo/dim/change.
-  - Independent mode: per-controller, isolated, does NOT propagate, ignores everything except explicit exit commands.
-
-- **Admin page — structured packet view:** The `/admin` page exists (mesh stats, firmware version + deploy all/outdated, controller list with identify + config editor, defaults, combined server+mesh log). Remaining: a structured per-packet stream — sender MAC, message type, theme/scene/dim, sequence number, timestamp — rather than just log lines.
-
-- **Monitoring and metrics:** Track per-controller health over time — last seen timestamp, packet counts, command success/failure rates, leader election history. Exportable for post-show review. Groundwork for alerting when a controller goes silent mid-show.
-
-- **Rename LIGHTRIG_OTA network:** The shared hotspot SSID is still named `LIGHTRIG_OTA` but now serves both OTA updates and show control. Rename to something more generic (e.g. `LIGHTRIG`) once we decide on a final name.
-
-- **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
-
-- **Tiered leader election (Hybrid A) — spec:**
-
-  Problem: the elected leader bridges the mesh to the server, and ESP-NOW + WiFi share one radio, so the bridge work stutters that controller's light rendering. Fix: prefer no-light / designated devices for the bridge so light controllers stay fast — while never removing the hardware-free failover to a light controller.
-
-  **Election priority (highest → lowest):**
-  1. `leader`-tagged controllers — explicitly designated bridge devices (future Pi/ESP32 boxes get this tag).
-  2. `button-box`-tagged controllers — command devices with no light output (bridging causes no visible stutter).
-  3. Light controllers (default, or `light`-tagged) — the backup-backup failsafe.
-
-  MAC address breaks ties within a tier (existing deterministic tiebreak).
-
-  **Behavior:**
-  - A controller computes its own tier locally from its tags (tags already reach the device via `device_config`).
-  - It only declares itself leader if no online peer of a higher tier exists; it defers to higher tiers (and to a winning MAC in the same tier).
-  - If a higher-tier device appears after a lower-tier one won, leadership hands off to it (pre-emption on the next reelection window, with hysteresis to avoid flapping).
-  - If all higher-tier devices drop, a light controller takes over — the failsafe is never eliminated.
-
-  **Plumbing needed:**
-  - Heartbeats carry the sender's tier (a small int) so peers can compare. Touch points: `mesh.py` `_broadcast`/heartbeat fields, `controller.py` `tick_start` / `_become_leader` / the reelection block (`leader_heartbeat_age`).
-  - A `button-box`-tagged controller (or one with zero configured strips) renders nothing — `app._main` builds an empty fixture and skips the render path.
-
-  **Tags:** `leader`, `button-box`, `light` are reserved election-role tags (UI + colors + reference card already in place; `player` was removed). `no-solo` remains a behavior flag.
-
-**TODO**
-
-The following categories are unrefined ideas and todo items. Keep the list titles even if all items have been removed.
-
-- **Change Requests:**
-* Add the default config as a fall back (or potential target for control actions) to every controller and make it part of the firmware hash so controlers are out of date when it's missing. 
-* I want a toggle at the top of the actioins that switches between mesh freedom and only the control plane is allowed to send changes. default is free comand mode.
-* The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
-* add a color wheel for picking default colors with an optional text input below. 
-* assume any controller without custom light settings has 3 strings with 150 lights per string
-
-- **Larger Ideas:**
-* I see were tracking when controllers go offline. I like that behavior on the main page. I also want that on the admin page to gray out missing controllers that have previously been seen this session. On the admin page make an option to remove that user from the show (do not delete that persons config). I want a deploy button next to each controller that opens a drop down that starts with a list of all known controllers for that show that are not responding then a line break and a list of all known configs in alphabetical order. If a new controller is brought online and a config is deployed, automatically remove the disconnected controller. If a config is deployed multiple times then those two controllers are allowed to operate as duplicates of each other. Put those in the list order based on which ever controller came online first. Controller configs should have a toggle that when true means they are important and should follow this missing controller behavior. False means they just disappear from the pages. Default should be any named controller is true, any unnamed controller is false.
-* Show configs live in their own DB table — not the `defaults` singleton. A show has a name, default theme/scene/color (show-wide fallback pushed as a mesh packet, not a firmware change), and a list of expected controllers by assignment. Shows do NOT have strip LED counts — those belong to the controller. A controller can appear across multiple shows. UI: dropdown at the top of the admin page to select the active show; selecting one sends its defaults to the mesh. Show editor lists expected controllers and flags missing ones; a session-reset button flushes the missing list without deleting the show's known controller roster. New controllers that check in during a show's lifecycle are added automatically. Shows can have tags (reserved for future use).
-* Make a separate config for adding and editing shows and controllers the page should start with show lists. Have an add button at the top of the section that opens a fresh show config as a section below and buttons with a save and discard. List all shows by name underneath with an edit button that opens the edit page under that show with save and discard. Add a delete button next to that with a confirm popup. Add a deploy button next to the show title
-
-- **Future Ideas:**
-* OTA association jitter: when 20+ controllers receive a firmware deploy simultaneously they can storm the hotspot AP. Add a MAC-based stagger delay in ota.py before the WiFi connect (`mac[5] * 20ms`, giving a 0–5s spread). MAC-based (not random) so the delay per device is deterministic and reproducible. Config pushes don't need this — they're already ACK-serialized server-side.
-* allow an optional starting position for the lights so they might skip the first n lights before displaying the pattern. Ending light is based on it's light position but provide a toggle to switch to end is Z lights ahead of start where number of lights includes the starting light. E.G. start 2, end 5 in default would turn on lights 2, 3, 4, 5 but in the other mode it would be 2, 3, 4, 5, 6. 
-* add a shadow to the dimmer slidder that shows the previous location of the dim setting when the lights off toggle is engaged. 
-* Build a listening option so a series of commands and their time intervals can be recorded and saved to be used as custom actions. 
-* add custom tag sections for creating special tags and giving them custom actions (this would be a significant lift to create custom commands and behaviors)
-* Add a tag to scenes that could be kept in sync with eachother and implement a distributed syncing system to keep them inline. 
-* When selecting a solo tag highlight the users in the solo section that are made active by the tag solo. If i were to then click on one of those soloists buttons it would override the solo tag and hand control to the single soloist. a further click on that soloist would behave normal and disable solo mode. 
-
-
-- **BUG Report:**
-* The everyone personal (change name to personal defaults) momentarily changes the controllers before they change back. I'm assuming the heartbeat is overriding the change because it doesn't understand how users could be doing something different. 
-* a controller with fewer than 3 lights on its main string seems to prevent a firmware deployment. I assume it's because it's missing enough leds. This should not be blocking and a controller should be fine with missing some or all of the downloading lights. 
-
-- **Architecture Clarification Questions:**
-
-These are questions that I want clarification on over how they work so we can discuss if changes need to be made.
-
-* Is everything related to the user configs stored in the local database. I want to ensure were not adding traffic to the mesh by polling the admin page more than is necessary. I expect things like leader and controller count can all be picked up passively. 
-* Can the future phone app operate the server on its own and broadcast a hotspot from the app or would it be better to 
-* Is it possible for any of the config fields (show or user) to cause a controller to fail and stop working? Do we have tests written to cover this possibility? 
-
-- **Refactor:**
-* give all controllers a short mac address name in it's own field. Then remove the short mac addresses from controler nicknames and allow them to be none. That way we can remove the user defined nickname flag and fix the solo page selection because only user defined nicknames would appear in the nickname field. Make sure any display name defaults to the short macaddress when nickname is not present. Switch to using the first 6 characters of the mac instead of the last 6 unless that would be a problem. 
-* Refactor the repo to mirror the slots on the drive. I want all the files that get written to a device to be in their own folder. I also want all the scripts including any in other directories to be moved into /bin but keep the root level files in the root of the git repo. Create a second hash to track the high sensitivity files that we can only change with a wired connection. Add that to the checks but don't advertise it anywhere. If that hash ever fails to match then hilight that controller bold in red on the admin page with a detailed message about using a hard line and flashing the device fresh. Alter the existing hash to only track the files we can update through ota. 
-* Add database validation to prevent commiting bad data. 
