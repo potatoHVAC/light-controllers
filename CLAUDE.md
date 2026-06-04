@@ -200,14 +200,16 @@ The following categories are unrefined ideas and todo items. Keep the list title
 * Make a separate config for adding and editing shows and controllers the page should start with show lists. Have an add button at the top of the section that opens a fresh show config as a section below and buttons with a save and discard. List all shows by name underneath with an edit button that opens the edit page under that show with save and discard. Add a delete button next to that with a confirm popup. Add a deploy button next to the show title
 
 - **Future Ideas:**
+* OTA association jitter: when 20+ controllers receive a firmware deploy simultaneously they can storm the hotspot AP. Add a MAC-based stagger delay in ota.py before the WiFi connect (`mac[5] * 20ms`, giving a 0–5s spread). MAC-based (not random) so the delay per device is deterministic and reproducible. Config pushes don't need this — they're already ACK-serialized server-side.
 * allow an optional starting position for the lights so they might skip the first n lights before displaying the pattern. Ending light is based on it's light position but provide a toggle to switch to end is Z lights ahead of start where number of lights includes the starting light. E.G. start 2, end 5 in default would turn on lights 2, 3, 4, 5 but in the other mode it would be 2, 3, 4, 5, 6. 
 * add a shadow to the dimmer slidder that shows the previous location of the dim setting when the lights off toggle is engaged. 
 * Build a listening option so a series of commands and their time intervals can be recorded and saved to be used as custom actions. 
 * add custom tag sections for creating special tags and giving them custom actions (this would be a significant lift to create custom commands and behaviors)
+* Add a tag to scenes that could be kept in sync with eachother and implement a distributed syncing system to keep them inline. 
+* When selecting a solo tag highlight the users in the solo section that are made active by the tag solo. If i were to then click on one of those soloists buttons it would override the solo tag and hand control to the single soloist. a further click on that soloist would behave normal and disable solo mode. 
 
 
 - **BUG Report:**
-* when pushing a new config send a turn off all lights signal to wipe any lights past what we are turning off. The strings may be longer than what we want to show at a given time. 
 * The everyone personal (change name to personal defaults) momentarily changes the controllers before they change back. I'm assuming the heartbeat is overriding the change because it doesn't understand how users could be doing something different. 
 * a controller with fewer than 3 lights on its main string seems to prevent a firmware deployment. I assume it's because it's missing enough leds. This should not be blocking and a controller should be fine with missing some or all of the downloading lights. 
 * The dim displayed at top flickers between the solo dim and the master setting when solo mode is engaged. that dim should only show the master dim. I suspect this is heartbeat related.
@@ -223,3 +225,4 @@ These are questions that I want clarification on over how they work so we can di
 
 - **Refactor:**
 * give all controllers a short mac address name in it's own field. Then remove the short mac addresses from controler nicknames and allow them to be none. That way we can remove the user defined nickname flag and fix the solo page selection because only user defined nicknames would appear in the nickname field. Make sure any display name defaults to the short macaddress when nickname is not present. Switch to using the first 6 characters of the mac instead of the last 6 unless that would be a problem. 
+* Refactor the repo to mirror the slots on the drive. I want all the files that get written to a device to be in their own folder. I also want all the scripts including any in other directories to be moved into /bin but keep the root level files in the root of the git repo. Create a second hash to track the high sensitivity files that we can only change with a wired connection. Add that to the checks but don't advertise it anywhere. If that hash ever fails to match then hilight that controller bold in red on the admin page with a detailed message about using a hard line and flashing the device fresh. Alter the existing hash to only track the files we can update through ota. 

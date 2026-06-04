@@ -249,8 +249,12 @@ def _main():
                 _run_ota(wdt)
 
             if controller.reboot_requested:
+                # Black out all strips before rebooting to apply the new config.
+                # The new config may specify fewer LEDs; without this, any LEDs
+                # beyond the new strip length stay lit until the next pattern tick.
+                _blackout(_strip_layout())
                 import machine
-                machine.reset()   # apply a freshly pushed config
+                machine.reset()
 
             # Once this slot has run cleanly for a while, declare it healthy:
             # clear the crash counter and mark the slot proven (it has now booted
