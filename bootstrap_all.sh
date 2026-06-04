@@ -34,5 +34,8 @@ echo "=== Flashing firmware ==="
 ./flash_all.sh "$FIRMWARE" $VERBOSE_FLAG || exit 1
 
 echo ""
+echo "Waiting for devices to complete first boot..."
+sleep 5
+
 echo "=== Deploying code ==="
 ./deploy_all.sh $VERBOSE_FLAG
