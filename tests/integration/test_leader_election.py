@@ -19,6 +19,49 @@ def test_followers_sync_to_existing_leader():
     assert not sim.nodes[2].ctrl.is_leader
 
 
+def test_force_leader_hands_off():
+    # Admin forces a non-leader controller to become the bridge leader. The
+    # relaying leader broadcasts the command and steps down; the target takes over.
+    sim = Simulation(3)
+    assert sim.boot_one(0)
+    assert sim.start_followers(0)
+    leader, follower, target = sim.nodes
+    assert leader.ctrl.is_leader
+
+    # Replicate what the relaying leader does in app._execute_bridge_command:
+    BUS.bind(0)
+    leader.mesh.send_force_leader(target.mesh.mac)
+    leader.ctrl.step_down()
+
+    sim.run(2000)
+
+    assert target.ctrl.is_leader
+    assert not leader.ctrl.is_leader
+    assert not follower.ctrl.is_leader
+    assert len(sim.leaders()) == 1
+
+
+def test_force_leader_does_not_block_reelection():
+    # After a forced switch, if the new leader dies, reelection still works.
+    sim = Simulation(2)
+    assert sim.boot_one(0)
+    assert sim.start_followers(0)
+    old, target = sim.nodes
+
+    BUS.bind(0)
+    old.mesh.send_force_leader(target.mesh.mac)
+    old.ctrl.step_down()
+    sim.run(1000)
+    assert target.ctrl.is_leader
+
+    # Target goes silent — the remaining controller must reelect itself.
+    BUS.node(1).channel = 11   # isolate the target so its heartbeats stop reaching old
+    for _ in range(2000):
+        old.step()
+        harness.advance(10)
+    assert old.ctrl.is_leader
+
+
 def test_two_leaders_resolve_to_lowest_mac():
     # Boot two nodes in isolation (different channels) so each elects itself,
     # then put them on the same channel — the higher MAC must stand down.

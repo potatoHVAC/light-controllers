@@ -152,6 +152,9 @@ class Mesh:
     def send_solo_tag(self, tag, dim=None, active=True):
         self._send_typed('solo_tag', tag=tag, dim=dim, active=active)
 
+    def send_force_leader(self, target):
+        self._send_typed('force_leader', target=target)
+
     def send_default(self):
         self._send_typed('default')
 

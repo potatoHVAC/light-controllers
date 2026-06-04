@@ -68,8 +68,10 @@ button.lights-off-active { background: var(--err); border: 1px solid var(--err);
 .tag { font-size: 11px; background: #243; color: #9d9; padding: 1px 6px; border-radius: 8px; }
 .tag.special { background: #2a3a2a; color: #8d8; }
 .tag.no-solo { background: #3a1a1a; color: var(--err); }
+.tag.role { background: #3a2222; color: #d88; }
 .tag-chip.special { background: #2a3a2a; color: #8d8; }
 .tag-chip.no-solo { background: #3a1a1a; color: var(--err); }
+.tag-chip.role { background: #3a2222; color: #d88; }
 .strips { display: flex; gap: 6px; }
 .strips input { width: 33%; }
 .tag-wrap { position: relative; display: flex; gap: 6px; margin-top: 4px; }

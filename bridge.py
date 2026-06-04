@@ -135,6 +135,17 @@ class Bridge:
 
         return None
 
+    def close(self):
+        """Tear the bridge down cleanly and power down the WiFi STA so the radio
+        returns fully to ESP-NOW. Used when leadership is handed to another
+        controller (forced leader switch)."""
+        self._fail()
+        if self._sta:
+            try:
+                self._sta.active(False)
+            except Exception:
+                pass
+
     def _fail(self):
         self._close_disc_sock()
         if self._sock:

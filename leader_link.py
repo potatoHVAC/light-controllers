@@ -23,6 +23,7 @@ class LeaderLink:
         self._gave_up     = False                # stopped scanning until an alert
         self._hint_ch     = None                 # channel from a hotspot_found alert
         self._self_hb_at  = 0                    # last self-heartbeat forward time
+        self._was_leader  = False                # to detect leadership transitions
 
     def make_bridge(self):
         """Create the bridge now (called if already leader at boot)."""
@@ -51,6 +52,17 @@ class LeaderLink:
 
     def tick(self, controller, now_ms):
         """Advance the bridge one step. Returns a server command to run, or None."""
+        # Handle leadership transitions (e.g. a forced leader switch).
+        if controller.is_leader and not self._was_leader:
+            # Just gained leadership — make sure we'll try to bridge.
+            self._gave_up  = False
+            self._retry_at = now_ms
+        elif not controller.is_leader and self.bridge is not None:
+            # Just lost leadership — release the bridge so the new leader can take
+            # over the hotspot/server connection.
+            self._release_bridge()
+        self._was_leader = controller.is_leader
+
         if controller.is_leader and not self._gave_up:
             self._advance_connect(now_ms)
         cmd = self._service(now_ms)
@@ -59,6 +71,16 @@ class LeaderLink:
         return cmd
 
     # ── internals ────────────────────────────────────────────────────────────
+
+    def _release_bridge(self):
+        try:
+            self.bridge.close()
+        except Exception:
+            pass
+        self.bridge     = None
+        self._retry_ms  = BRIDGE_RETRY_INIT_MS
+        self._cap_fails = 0
+        _log.write('main', 'released bridge — leadership handed off')
 
     def _advance_connect(self, now_ms):
         if self.bridge is None:

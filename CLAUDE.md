@@ -137,13 +137,21 @@ and is pushed via a targeted `set_config` command (the controller saves it and
 reboots to apply). Controllers report their firmware version and config version
 in heartbeats so the admin page can flag outdated units.
 
+## Phase Two — Future Architecture (do not start yet; keep in mind)
+
+Big structural work for after the current phase. The **leader failsafe is never eliminated** in any of these — light-controller election always remains the bottom backstop.
+
+- **Pi/ESP32 hybrid leader boxes (topmost bridge tier):** A Raspberry Pi hosts the server in Docker and holds the configs locally. It serves the control plane over DNS/hostname so phones and laptops connect by name instead of an IP. One or more attached ESP32s drive the ESP-NOW mesh as the bridge (the Pi talks to them over USB/serial). When built, these boxes become the highest election tier — the `leader` tag is moved onto them. Multiple ESP32s per Pi allow additional zones and automatic failover among the Pi's own bridge radios. This is the eventual home of the `leader` tag from the Hybrid A spec.
+
+- **Server-as-mesh-peer via ESP-NOW dongle (Option B):** Instead of a controller bridging over WiFi, the server speaks ESP-NOW directly through a USB ESP32 dongle running a serial↔ESP-NOW firmware. Eliminates WiFi-during-show for control entirely (no association, no channel convergence, every controller equally fast); WiFi survives only for OTA, which is already per-controller. Signed commands unchanged, new transport. This underlies the Pi-hybrid box's ESP32 link.
+
+- **10,000-node bridge / zone architecture:** The main speaks a higher-level protocol (Art-Net, OSC, or custom TCP/IP) to bridge nodes, each managing a zone of up to ~200 controllers over ESP-NOW. Controllers are unaware they are in a zone — same firmware, same mesh code throughout. The Pi-hybrid boxes are the natural bridge nodes.
+
+- **Leader / authority hierarchy:** Distinct from the elected bridge leader. A designated authority (the Pi/server) can issue commands all controllers must obey regardless of local button presses. The `type` field in the mesh packet and `apply_state` are the designed extension points.
+
+- **Art-Net integration:** A main node (or bridge device) receives Art-Net DMX-over-IP from professional lighting consoles and translates to ESP-NOW commands. Keep protocol boundaries clean so this layer adds without restructuring the core network.
+
 ## Long-Term Roadmap (not immediate priority)
-
-- **Art-Net integration:** Allow a main node (or bridge device) to receive Art-Net DMX-over-IP from professional lighting consoles, translating to ESP-NOW commands across the rig network. Keep protocol boundaries clean so this layer can be added without restructuring the core network.
-
-- **Leader / authority hierarchy:** The elected leader (bridge controller) is the current coordinator but has no authority over other controllers beyond what the mesh protocol provides. A future "authority" layer would allow a designated controller — or the laptop server via the bridge — to issue commands that all controllers must obey regardless of local button presses. This is distinct from the elected leader; the authority could be the server itself. The `type` field in the mesh packet and `apply_state` are the designed extension points.
-
-- **Bridge architecture:** At 10,000-unit scale the main speaks a higher-level protocol (Art-Net, OSC, or custom TCP/IP) to bridge nodes, each of which manages a zone of up to ~200 controllers over ESP-NOW. Controllers are unaware they are in a zone — same firmware, same mesh code throughout.
 
 - **Web/phone configuration interface:** ESP32 hosts a WiFi access point for show-day adjustments without redeployment. Must be secured so audience members cannot interfere — authentication required, ideally with role-based access so a band member cannot accidentally trigger main-level overrides.
 
@@ -208,20 +216,39 @@ in heartbeats so the admin page can flag outdated units.
 
 - **Venue WiFi push:** Add a server command that pushes WiFi credentials to all controllers over the hotspot, allowing them to connect to the venue's WiFi network directly. Controllers would switch to venue WiFi after receiving credentials. Architecture to be designed — needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
 
-- **Button Boxes:** Create code for button command boxes that have more buttons but no light outputs. They will have more options for triggering actions in the mesh. These boxes should take precedence as lead controllers since they won't have lights.
+- **Tiered leader election (Hybrid A) — spec:**
+
+  Problem: the elected leader bridges the mesh to the server, and ESP-NOW + WiFi share one radio, so the bridge work stutters that controller's light rendering. Fix: prefer no-light / designated devices for the bridge so light controllers stay fast — while never removing the hardware-free failover to a light controller.
+
+  **Election priority (highest → lowest):**
+  1. `leader`-tagged controllers — explicitly designated bridge devices (future Pi/ESP32 boxes get this tag).
+  2. `button-box`-tagged controllers — command devices with no light output (bridging causes no visible stutter).
+  3. Light controllers (default, or `light`-tagged) — the backup-backup failsafe.
+
+  MAC address breaks ties within a tier (existing deterministic tiebreak).
+
+  **Behavior:**
+  - A controller computes its own tier locally from its tags (tags already reach the device via `device_config`).
+  - It only declares itself leader if no online peer of a higher tier exists; it defers to higher tiers (and to a winning MAC in the same tier).
+  - If a higher-tier device appears after a lower-tier one won, leadership hands off to it (pre-emption on the next reelection window, with hysteresis to avoid flapping).
+  - If all higher-tier devices drop, a light controller takes over — the failsafe is never eliminated.
+
+  **Plumbing needed:**
+  - Heartbeats carry the sender's tier (a small int) so peers can compare. Touch points: `mesh.py` `_broadcast`/heartbeat fields, `controller.py` `tick_start` / `_become_leader` / the reelection block (`leader_heartbeat_age`).
+  - A `button-box`-tagged controller (or one with zero configured strips) renders nothing — `app._main` builds an empty fixture and skips the render path.
+
+  **Tags:** `leader`, `button-box`, `light` are reserved election-role tags (UI + colors + reference card already in place; `player` was removed). `no-solo` remains a behavior flag.
 
 **TODO**
 
 The following categories are unrefined ideas and todo items. Keep the list titles even if all items have been removed.
 
 - **Change Requests:**
-* add a button next to a controller to force the leader to switch to that controller. This should not prevent a reelection incase that controller goes down. Just acts like that controller won a new election. 
 * Add the default config as a fall back (or potential target for control actions) to every controller and make it part of the firmware hash so controlers are out of date when it's missing. 
 * I want a toggle at the top of the actioins that switches between mesh freedom and only the control plane is allowed to send changes. default is free comand mode.
 * The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
 * add a color wheel for picking default colors with an optional text input below. 
 * assume any controller without custom light settings has 3 strings with 150 lights per string
-* leader, no-solo, player tags: UI/color-coding/descriptions/picker ordering done. Controller-side bridge priority order (leader tag → MAC-only → nicknamed → player) still needs election logic changes in mesh.py.
 
 - **Larger Ideas:**
 * I see were tracking when controllers go offline. I like that behavior on the main page. I also want that on the admin page to gray out missing controllers that have previously been seen this session. On the admin page make an option to remove that user from the show (do not delete that persons config). I want a deploy button next to each controller that opens a drop down that starts with a list of all known controllers for that show that are not responding then a line break and a list of all known configs in alphabetical order. If a new controller is brought online and a config is deployed, automatically remove the disconnected controller. If a config is deployed multiple times then those two controllers are allowed to operate as duplicates of each other. Put those in the list order based on which ever controller came online first. Controller configs should have a toggle that when true means they are important and should follow this missing controller behavior. False means they just disappear from the pages. Default should be any named controller is true, any unnamed controller is false.

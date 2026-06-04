@@ -43,6 +43,7 @@ class FakeBridge:
     def check_server_alive(self, now): return True
     def tick(self):                 return None
     def forward(self, pkt):         pass
+    def close(self):                self._connected = False
 
 
 def _fail_cycle(link, ctrl):
@@ -106,3 +107,20 @@ def test_non_leader_does_nothing(monkeypatch):
     link = LeaderLink(mesh)
     assert link.tick(ctrl, harness.now()) is None
     assert link.bridge is None
+
+
+def test_releases_bridge_when_leadership_lost(monkeypatch):
+    # A forced leader switch hands leadership to another controller; this one
+    # must tear down its bridge so the new leader can take over the connection.
+    monkeypatch.setattr(bridge_mod, 'Bridge', FakeBridge)
+    FakeBridge.connect_result = True
+    mesh, ctrl = FakeMesh(), FakeController()
+    link = LeaderLink(mesh)
+    link.tick(ctrl, harness.now())       # gain leadership, create bridge
+    link.tick(ctrl, harness.now())       # connect
+    assert link.connected()
+
+    ctrl.is_leader = False               # leadership handed off
+    link.tick(ctrl, harness.now())
+    assert link.bridge is None
+    assert not link.connected()

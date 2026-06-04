@@ -436,6 +436,12 @@ class Controller:
                 elif msg_type == 'solo_tag':
                     self.apply_solo_tag(msg.get('tag'), msg.get('dim'),
                                         msg.get('active', True), now_ms)
+                elif msg_type == 'force_leader':
+                    target = msg.get('target')
+                    if self._network and target == self._network.mac:
+                        self.force_leader()
+                    elif self._is_leader:
+                        self.step_down()
                 elif msg_type == 'default':
                     self.apply_default(now_ms)
                 elif msg_type == 'set_config':
@@ -466,6 +472,21 @@ class Controller:
         self._is_leader = True
         if self._network:
             self._network.is_leader = True
+
+    def force_leader(self):
+        """Forced to become leader by the control plane (admin 'Make Leader').
+        Acts like winning a fresh election — the current leader stands down on
+        the same broadcast. Reelection is unaffected if this controller later dies."""
+        self._is_leader = True
+        if self._network:
+            self._network.is_leader = True
+
+    def step_down(self):
+        """Give up leadership (another controller was forced to lead). The bridge
+        is released by LeaderLink once it sees is_leader go False."""
+        self._is_leader = False
+        if self._network:
+            self._network.is_leader = False
 
     def _handle_leader_heartbeat(self, msg, now_ms):
         """Handle the leader flag in an incoming heartbeat. If the sender is also

@@ -5,12 +5,14 @@ let bridgeConnected  = false;
 let activeEditorMac  = null;
 
 // Special tags have reserved meanings. Shown first in the picker, color-coded,
-// and described in the special-tags reference section.
-const SPECIAL_TAGS = ['leader', 'no-solo', 'player'];
+// and described in the special-tags reference section. leader/button-box/light
+// drive bridge-election priority; no-solo is a behavior flag.
+const SPECIAL_TAGS = ['leader', 'button-box', 'light', 'no-solo'];
 
 function tagClass(t) {
   if (t === 'no-solo') return 'no-solo';
-  if (SPECIAL_TAGS.includes(t)) return 'special';
+  if (t === 'button-box' || t === 'light') return 'role';   // red election-role group
+  if (SPECIAL_TAGS.includes(t)) return 'special';           // leader
   return '';
 }
 
@@ -127,6 +129,11 @@ function deployConfigs() {
 
 function identify(mac) { api.post('identify', { mac }); }
 
+function forceLeader(mac, name) {
+  if (!confirm('Make ' + name + ' the bridge leader? The current leader will hand off.')) return;
+  api.post('force_leader', { mac }).then(refresh);
+}
+
 function renderControllers(list) {
   const box = el('controllers');
   if (!list.length) { box.innerHTML = '<div class="muted">None known.</div>'; return; }
@@ -158,6 +165,7 @@ function renderControllers(list) {
             ${c.tags && c.tags.length ? '<div class="tags">' + c.tags.map(t => `<span class="tag ${tagClass(t)}">${escapeHtml(t)}</span>`).join('') + '</div>' : ''}
           </div>
           <div class="btn-group">
+            ${(c.online && !c.leader) ? `<button ${bridgeConnected ? '' : 'disabled'} onclick="forceLeader('${c.mac}', '${escapeHtml(c.nickname)}')">Make Leader</button>` : ''}
             <button ${(!c.online || !bridgeConnected) ? 'disabled' : ''} onclick="identify('${c.mac}')">Identify</button>
             <button onclick="editController('${c.mac}')">Edit</button>
           </div>

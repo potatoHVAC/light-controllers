@@ -67,10 +67,11 @@
   <div class="card">
     <h2>Special tags <button style="font-size:11px;padding:4px 8px;flex:none" onclick="toggleSpecialTags()">show</button></h2>
     <div id="special-tags-body" style="display:none;margin-top:8px;font-size:12px;line-height:1.8">
-      <span class="tag special">leader</span> &nbsp;Priority candidate for the bridge role. Preferred over unnamed and nicknamed controllers.<br>
-      <span class="tag no-solo">no-solo</span> &nbsp;Hidden from the individual solo grid. Still participates in tag-group solos.<br>
-      <span class="tag special">player</span> &nbsp;Marks a performer's controller. Lower bridge priority than <em>leader</em>; higher than unnamed.
-      <div class="muted" style="margin-top:6px">Priority order: leader → unnamed (MAC only) → nicknamed → player</div>
+      <span class="tag special">leader</span> &nbsp;Top priority for the bridge role. Future Pi/ESP32 boxes carry this.<br>
+      <span class="tag role">button-box</span> &nbsp;No-light command device. Second bridge priority — renders nothing, so bridging never causes stutter.<br>
+      <span class="tag role">light</span> &nbsp;Standard light controller. Last-resort bridge failsafe (the backup backup).<br>
+      <span class="tag no-solo">no-solo</span> &nbsp;Hidden from the individual solo grid. Still participates in tag-group solos.
+      <div class="muted" style="margin-top:6px">Bridge election priority: leader → button-box → light, MAC breaks ties within a tier.</div>
     </div>
   </div>
 

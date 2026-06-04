@@ -155,6 +155,14 @@ def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
         if ctrl._network:
             ctrl._network.send_solo_tag(cmd.get('tag'), cmd.get('dim'), active)
         ctrl.apply_solo_tag(cmd.get('tag'), cmd.get('dim'), active, now_ms)
+    elif cmd_type == 'force_leader':
+        target = cmd.get('target')
+        if ctrl._network:
+            ctrl._network.send_force_leader(target)   # tell the mesh first
+        if ctrl._network and target == ctrl._network.mac:
+            ctrl.force_leader()
+        elif ctrl.is_leader:
+            ctrl.step_down()                          # this (relaying) leader yields
     elif cmd_type == 'default':
         if ctrl._network:
             ctrl._network.send_default()

@@ -192,6 +192,10 @@ class Api:
     def identify(self, mac):
         return self._link.send_command({'type': 'identify'}, target=mac)
 
+    def force_leader(self, mac):
+        """Force a specific controller to become the bridge leader (admin action)."""
+        return self._link.send_command({'type': 'force_leader'}, target=mac)
+
     def save_config(self, mac, fields, tags=None):
         cfg = self._db.upsert_controller(mac, **fields)
         if tags is not None:
