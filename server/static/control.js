@@ -57,7 +57,9 @@ function refresh() {
     el('scene').textContent = s.scene || '—';
     el('dim').textContent   = Math.round((s.dim || 0) * 100) + '%';
     el('count').textContent = s.controllers;
-    el('bridge').innerHTML  = pill(s.connected, 'bridge connected', 'bridge offline');
+    el('bridge').innerHTML  = s.connected
+      ? `<span class="pill on">Bridge → ${escapeHtml(s.leader_name || '?')}</span>`
+      : '<span class="pill off">bridge offline</span>';
     el('auto').innerHTML    = s.autonomous ? '<span class="pill warn">autonomous</span>' : '';
     setBridgeState(s.connected);
   }).catch(() => {});

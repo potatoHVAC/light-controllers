@@ -159,7 +159,6 @@ in heartbeats so the admin page can flag outdated units.
 The following categories are unrefined ideas and todo items. Keep the list titles even if all items have been removed.
 
 - **Change Requests:**
-* identify the lead controller with the bridge connected indicator on the top of both pages page. Something like Bridge Connected to (nickname fall back to mac address). keep the additional indicator on the user in the admin page. 
 * A list of tags can be shown from a button that doesn't change the page. those can be selected and added to the tags field. Typing tags also auto completes with known tags, unknown tags get added automatically. 
 * default scene selection is also a drop down with all known themes. 
 * add a button next to a controller to force the leader to switch to that controller. This should not prevent a reelection incase that controller goes down. Just acts like that controller won a new election. 
@@ -170,10 +169,6 @@ The following categories are unrefined ideas and todo items. Keep the list title
 * List the show defaults in the top section of the admin page with an edit button that causes an edit section to open below the displayed settings. All the 
 * I want a toggle at the top of the actioins that switches between 
 * The ident needs to start with an all lights off and then flash 3 lights 3 times. I like the current tempo of the flashes. 
-* remove the server + mesh log from the control page. Change to having a separate server log and mesh log on the admin page.
-* Only show the users name in the solo list upper section. remove their default options from the button. 
-* add a turn off all lights button to the control panel.
-* Keep the admin controller list in alphabetical order by nickname then put all controllers without a nickname in mac order below that with a small line break between lists. 
 * create a special controller tag named "leader" that when applied to a controller makes them a priority for handling the bridge
 * remove the text from the tag input field for controller edits. 
 * Create a special controller tag named "no-solo" that appears red. this tag removes the controller from the solo grid. It does not prevent that controller from participating in tag based solo groups. 
@@ -195,14 +190,8 @@ The following categories are unrefined ideas and todo items. Keep the list title
 
 
 - **BUG Report:**
-* Are the system hashes created in a consistent way? It seems like the hash might not use a consistent pattern with the used files and that is causing controllers to mistakenly report being out of date.
 * when pushing a new config send a turn off all lights signal to wipe any lights past what we are turning off. The strings may be longer than what we want to show at a given time. 
-* The ident and edit buttons are not formatted properly. the text extends off the button. 
-* clicking edit on a users config drops you down to the last part of the edit section so it extends up off the screen and needs to be scrolled to. Change to opening an edit section under the user being worked on. 
 * The everyone personal (change name to personal defaults) momentarily changes the controllers before they change back. I'm assuming the heartbeat is overriding the change because it doesn't understand how users could be doing something different. 
-* Sometimes the ident button is missing from a user on the admin page. 
-* Currently I see the bridge is connected and the controllers are receiving commands but the leader is not indicated by any user on the admin page. 
-* Next scene button on control panel is stuck on the starting theme. If i change theme then try to change scene i revert to the original theme. Swap the placement of the buttons and switch this behavior. Scenes are a subset of themes so scene changes stay on theme. 
 * a controller with fewer than 3 lights on its main string seems to prevent a firmware deployment. I assume it's because it's missing enough leds. This should not be blocking and a controller should be fine with missing some or all of the downloading lights. 
 
 - **Architecture Clarification Questions:**
@@ -211,4 +200,6 @@ These are questions that I want clarification on over how they work so we can di
 
 * Is everything related to the user configs stored in the local database. I want to ensure were not adding traffic to the mesh by polling the admin page more than is necessary. I expect things like leader and controller count can all be picked up passively. 
 * Can the future phone app operate the server on its own and broadcast a hotspot from the app or would it be better to 
-* how do the heartbeats work between controllers? Do they all send one out or do they only send one out if it has not heard a different heartbeat in a while? I'm wondering if controllers can go a long time without sending a heartbeat and then appear offline to the control page even though they are working normally. Should we switch to a dedicated I'm alive heartbeat every 15 seconds (lets discuss timing) randomly spaced for each so we don't storm. 
+
+- **Refactor:**
+* give all controllers a short mac address name in it's own field. Then remove the short mac addresses from controler nicknames and allow them to be none. That way we can remove the user defined nickname flag and fix the solo page selection because only user defined nicknames would appear in the nickname field. Make sure any display name defaults to the short macaddress when nickname is not present. Switch to using the first 6 characters of the mac instead of the last 6 unless that would be a problem. 

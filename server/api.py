@@ -28,6 +28,13 @@ class Api:
         s['connected']   = self._link.connected()
         s['controllers'] = len(self._link.online())
         s['version']     = firmware.current_version(self._root)
+        online = self._link.online()
+        leader_mac = next((mac for mac, info in online.items() if info.get('leader')), None)
+        if leader_mac:
+            cfg = self._db.get_controller(leader_mac)
+            s['leader_name'] = (cfg or {}).get('nickname') or short_mac(leader_mac)
+        else:
+            s['leader_name'] = None
         return s
 
     def controllers(self):
