@@ -148,7 +148,7 @@ Completed capabilities (an index — the "how" lives in **Architecture** above).
 - **Server (control panel + admin)** — stdlib package, SQLite per-controller configs + tags + defaults, signed UDP bridge, live registry/mesh-state, bridge-offline UI gating.
 - **Show control** — next/random theme & scene, master dim, lights-off toggle, default show, personal defaults.
 - **Solo** — individual soloist grid + tag-group solo, relative background dim (heartbeat carries both `dim` and `master_dim`), release; `no-solo` tag.
-- **Personal mode** — mesh-wide "everyone show your own default" with heartbeat propagation; distinct from the (specced) independent mode.
+- **Personal mode** — mesh-wide "everyone show your own default"; entered via the `default` command, exits on any explicit `change`. The `personal` flag in heartbeats is a status signal only (used for the admin display); it does NOT propagate entry to avoid re-infection loops. Distinct from the (specced) independent mode.
 - **Per-controller config** — device_config.json (survives OTA), targeted set_config push + reboot, nickname/strips/tags/personal defaults, config-version reporting; blackout before a config-apply reboot.
 - **Controller identity** — identified by MAC (short form = last 6 hex); admin lists online + assigned controllers and can `identify` a unit (orange blink overlaid on the running pattern, first 3 LEDs, 2s).
 - **Special tags** — leader / button-box / light / no-solo, color-coded, with a picker and reference card (election behavior is specced, not yet wired).

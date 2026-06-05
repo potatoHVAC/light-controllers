@@ -201,7 +201,10 @@ class Controller:
             if msg_type in ('heartbeat', 'change'):
                 color = msg.get('color')
                 if msg.get('personal') and not self._personal_mode:
-                    # Mesh is in personal mode at boot — join it and apply own defaults.
+                    # Booting into a mesh already in personal mode — apply own
+                    # defaults rather than snapping to the sender's personal theme.
+                    # This is safe here because tick_start() fires only once at boot;
+                    # it is NOT in the steady-state loop so there is no re-infection risk.
                     self.apply_default(now_ms)
                 else:
                     self._apply_network_state(
@@ -396,9 +399,6 @@ class Controller:
                             msg.get('theme'), msg.get('scene'), now_ms,
                             color=tuple(color) if color else None,
                         )
-                    elif msg.get('personal') and not self._personal_mode:
-                        # Mesh is in personal mode — join it and apply own defaults.
-                        self.apply_default(now_ms)
                     elif not self._personal_mode:
                         self._apply_network_state(
                             msg.get('theme'), msg.get('scene'), now_ms,
