@@ -59,6 +59,7 @@ def _post_routes():
         '/api/deploy_all_configs': lambda a, d: a.deploy_all_configs(),
         '/api/identify':           lambda a, d: a.identify(d['mac']),
         '/api/force_leader':       lambda a, d: a.force_leader(d['mac']),
+        '/api/deploy_controller':  lambda a, d: a.deploy_controller(d['mac']),
         '/api/push_config':        lambda a, d: a.push_config(d['mac']),
         '/api/delete_config':      lambda a, d: a.delete_config(d['mac']),
         '/api/save_config':        lambda a, d: a.save_config(

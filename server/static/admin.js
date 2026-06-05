@@ -127,7 +127,12 @@ function deployConfigs() {
 
 // ── controller list ──────────────────────────────────────────────────────────
 
-function identify(mac) { api.post('identify', { mac }); }
+function identify(mac)   { api.post('identify', { mac }); }
+
+function deployController(mac, name) {
+  if (!confirm('Deploy firmware to ' + name + '?\nConfig will be auto-synced on check-in.')) return;
+  api.post('deploy_controller', { mac }).then(refresh);
+}
 
 function forceLeader(mac, name) {
   if (!confirm('Make ' + name + ' the bridge leader? The current leader will hand off.')) return;
@@ -159,6 +164,7 @@ function renderControllers(list) {
             <b>${escapeHtml(c.nickname)}</b>
             ${c.leader ? '<span class="pill on">leader</span>' : ''}
             ${c.outdated && c.online ? '<span class="pill warn">outdated</span>' : ''}
+            ${c.cfg_stale && c.online ? '<span class="pill warn">config stale</span>' : ''}
             ${c.update_failed ? `<span class="pill off">update failed: ${escapeHtml(c.update_failed)}</span>` : ''}
             ${defaultsLine}
             <div class="muted">${c.mac}${c.fw ? ' · fw ' + c.fw : ''}</div>
@@ -166,6 +172,7 @@ function renderControllers(list) {
           </div>
           <div class="btn-group">
             ${(c.online && !c.leader) ? `<button ${bridgeConnected ? '' : 'disabled'} onclick="forceLeader('${c.mac}', '${escapeHtml(c.nickname)}')">Make Leader</button>` : ''}
+            ${c.online ? `<button class="warnbtn" ${bridgeConnected ? '' : 'disabled'} onclick="deployController('${c.mac}', '${escapeHtml(c.nickname)}')">Deploy</button>` : ''}
             <button ${(!c.online || !bridgeConnected) ? 'disabled' : ''} onclick="identify('${c.mac}')">Identify</button>
             <button onclick="editController('${c.mac}')">Edit</button>
           </div>

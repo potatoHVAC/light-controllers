@@ -20,6 +20,20 @@ class Api:
         self._log    = log
         self._root   = root
         self._themes = themes
+        self._link.on_checkin = self._auto_sync_config
+
+    def _auto_sync_config(self, mac, reported_cfg):
+        """Push config to a controller that checks in with a stale config version."""
+        cfg = self._db.get_controller(mac)
+        if not cfg:
+            return
+        db_version = cfg.get('config_version', 1)
+        if (reported_cfg or 0) < db_version:
+            self._push_config(mac, cfg)
+            self._log.write(
+                f'Auto-synced config for {short_mac(mac)} '
+                f'(controller v{reported_cfg} → db v{db_version})'
+            )
 
     # ── read views ───────────────────────────────────────────────────────────
 
@@ -55,6 +69,8 @@ class Api:
                 'theme': info['theme'], 'scene': info['scene'], 'dim': info['dim'],
                 'fw': info['fw'],
                 'outdated': info['fw'] != version,
+                'cfg': info.get('cfg'),
+                'cfg_stale': bool(cfg and (info.get('cfg') or 0) < cfg.get('config_version', 1)),
                 'update_failed': info.get('update_failed'),
                 'tags': (cfg or {}).get('tags', []),
                 'default_theme': (cfg or {}).get('default_theme'),
@@ -191,6 +207,20 @@ class Api:
 
     def identify(self, mac):
         return self._link.send_command({'type': 'identify'}, target=mac)
+
+    def deploy_controller(self, mac):
+        """Send a targeted firmware update to one controller. Config is preserved
+        across OTA (device_config.json is at the filesystem root, not in the slot),
+        and will be auto-synced on check-in if the DB version is newer."""
+        self._log.write(f'Deploy firmware to {short_mac(mac)}')
+        return self._link.send_command({'type': 'ota_update'}, target=mac)
+
+    def deploy_controller(self, mac):
+        """Send a targeted firmware update to one controller.
+        device_config.json lives at the filesystem root and survives OTA, so
+        the existing config is automatically preserved after the update."""
+        self._log.write(f'Deploy to {mac[-6:].upper()}')
+        return self._link.send_command({'type': 'ota_update'}, target=mac)
 
     def force_leader(self, mac):
         """Force a specific controller to become the bridge leader (admin action)."""

@@ -75,6 +75,8 @@ class Controller:
         self._last_solo_hb_ms = None   # tracks last heartbeat carrying solo dim
         self._is_leader = False
         self._ota_requested = False
+        self._ota_queued = False
+        self._ota_queue_ms = 0
         self._reboot_requested = False
         self._personal_mode = False    # True after apply_default; heartbeats don't override
         self._identify_until_ms = None
@@ -113,6 +115,17 @@ class Controller:
     @property
     def master_dim(self):
         return self._master_dim
+
+    def queue_ota(self, now_ms):
+        """Leader-only: defer this controller's own OTA so followers get a head
+        start. The leader relays the command to the mesh immediately and holds
+        for OTA_LEADER_WAIT_MS before starting its own download."""
+        self._ota_queued    = True
+        self._ota_queue_ms  = now_ms
+
+    def ota_due(self, now_ms, wait_ms):
+        """True once the leader's deferred OTA hold has elapsed."""
+        return self._ota_queued and time.ticks_diff(now_ms, self._ota_queue_ms) >= wait_ms
 
     @property
     def ota_requested(self):

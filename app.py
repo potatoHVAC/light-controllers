@@ -37,7 +37,11 @@ MAX_LOOP_ERRORS  = 50
 # counter (so a future crash loop is counted afresh) and clear any stale broken
 # marker on this slot. Until then a crash/reset keeps the counter climbing toward
 # the rollback threshold.
-HEALTHY_MS       = 10000
+HEALTHY_MS          = 10000
+# How long the leader waits after relaying ota_update before starting its own
+# download. Followers that need an update will have dropped off the mesh within
+# this window; followers that are already current keep running normally.
+OTA_LEADER_WAIT_MS  = 30000
 
 # Failure indicator: kept small and dim so it reads as a fault, not a show cue,
 # and never blasts a long strip at full power. First few LEDs at ~10% red.
@@ -137,7 +141,14 @@ def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
         if ctrl._network:
             ctrl._network.send_ota_update()
         if target is None or (ctrl._network and target == ctrl._network.mac):
-            _run_ota(wdt)
+            if ctrl.is_leader:
+                # Leader defers its own OTA so followers that need updating get
+                # a head start. After OTA_LEADER_WAIT_MS the main loop starts
+                # the leader's own download. Followers that are already current
+                # keep running and the mesh doesn't need to go fully silent.
+                ctrl.queue_ota(now_ms)
+            else:
+                _run_ota(wdt)
     elif cmd_type == 'identify':
         target = cmd.get('target')
         if ctrl._network:
@@ -254,6 +265,8 @@ def _main():
             recovery.tick(controller, mesh, now_ms)
 
             if controller.ota_requested:
+                _run_ota(wdt)
+            elif controller.ota_due(now_ms, OTA_LEADER_WAIT_MS):
                 _run_ota(wdt)
 
             if controller.reboot_requested:

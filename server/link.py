@@ -38,6 +38,7 @@ class BridgeLink:
         self._lock           = threading.Lock()
         self._last_packet    = 0.0
         self.registry        = {}     # mac -> info dict
+        self.on_checkin      = None   # callback(mac, cfg_version) — set by api.py
         self.mesh_state = {
             'theme': None, 'scene': None, 'dim': 1.0,
             'solo_active': False, 'leader': False, 'autonomous': False,
@@ -110,7 +111,15 @@ class BridgeLink:
             if 'fw' in msg:
                 info['fw'] = msg['fw']
             if 'cfg' in msg:
+                old_cfg = info['cfg']
                 info['cfg'] = msg['cfg']
+                # Fire the check-in callback when cfg version is seen for the
+                # first time or changes, so api.py can push a stale config.
+                if self.on_checkin and info['cfg'] != old_cfg:
+                    try:
+                        self.on_checkin(sender, info['cfg'])
+                    except Exception:
+                        pass
 
         if mtype in ('heartbeat', 'change'):
             if msg.get('theme'):
