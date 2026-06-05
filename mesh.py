@@ -304,7 +304,14 @@ class Mesh:
                 self._last_heartbeat_ms = now_ms
                 del self._pending[nonce]
 
-        _, msg = self._en.recv(0)
+        try:
+            _, msg = self._en.recv(0)
+        except Exception:
+            # recv() can raise if the ESP-NOW receive buffer is exhausted (heap
+            # fragmentation). Run GC to compact before the next tick rather than
+            # propagating the error into the main loop.
+            import gc; gc.collect()
+            return None
         if not msg:
             return None
         try:

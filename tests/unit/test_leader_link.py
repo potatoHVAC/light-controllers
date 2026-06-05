@@ -43,7 +43,7 @@ class FakeBridge:
     def check_server_alive(self, now): return True
     def tick(self):                 return None
     def forward(self, pkt):         pass
-    def close(self):                self._connected = False
+    def release(self):              self._connected = False
 
 
 def _fail_cycle(link, ctrl):
@@ -109,18 +109,34 @@ def test_non_leader_does_nothing(monkeypatch):
     assert link.bridge is None
 
 
-def test_releases_bridge_when_leadership_lost(monkeypatch):
-    # A forced leader switch hands leadership to another controller; this one
-    # must tear down its bridge so the new leader can take over the connection.
+def test_bridge_released_on_election_loss(monkeypatch):
+    # Losing leadership (MAC tiebreak) releases the bridge so this controller
+    # doesn't sit as a zombie second leader. release() keeps WiFi active so
+    # ESP-NOW survives — no re-election cascade.
     monkeypatch.setattr(bridge_mod, 'Bridge', FakeBridge)
     FakeBridge.connect_result = True
     mesh, ctrl = FakeMesh(), FakeController()
     link = LeaderLink(mesh)
-    link.tick(ctrl, harness.now())       # gain leadership, create bridge
-    link.tick(ctrl, harness.now())       # connect
+    link.tick(ctrl, harness.now())
+    link.tick(ctrl, harness.now())
     assert link.connected()
 
-    ctrl.is_leader = False               # leadership handed off
+    ctrl.is_leader = False               # lost election
     link.tick(ctrl, harness.now())
+    assert link.bridge is None
+    assert not link.connected()
+
+
+def test_surrender_releases_bridge(monkeypatch):
+    # surrender() (force_leader handoff / failed recovery attempt) releases the bridge.
+    monkeypatch.setattr(bridge_mod, 'Bridge', FakeBridge)
+    FakeBridge.connect_result = True
+    mesh, ctrl = FakeMesh(), FakeController()
+    link = LeaderLink(mesh)
+    link.tick(ctrl, harness.now())
+    link.tick(ctrl, harness.now())
+    assert link.connected()
+
+    link.surrender()
     assert link.bridge is None
     assert not link.connected()

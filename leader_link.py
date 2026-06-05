@@ -52,14 +52,16 @@ class LeaderLink:
 
     def tick(self, controller, now_ms):
         """Advance the bridge one step. Returns a server command to run, or None."""
-        # Handle leadership transitions (e.g. a forced leader switch).
         if controller.is_leader and not self._was_leader:
-            # Just gained leadership — make sure we'll try to bridge.
+            # Gained leadership — reset backoff so we try to connect immediately
+            # even if we previously gave up (e.g. reelected after the old leader died).
             self._gave_up  = False
             self._retry_at = now_ms
         elif not controller.is_leader and self.bridge is not None:
-            # Just lost leadership — release the bridge so the new leader can take
-            # over the hotspot/server connection.
+            # Lost leadership (MAC tiebreak or handoff) — release the bridge so we
+            # don't sit as a zombie second leader connected to the server. This is
+            # safe because release() keeps the WiFi STA active (ESP-NOW alive), so
+            # there's no silence-triggered re-election cascade.
             self._release_bridge()
         self._was_leader = controller.is_leader
 
@@ -72,15 +74,23 @@ class LeaderLink:
 
     # ── internals ────────────────────────────────────────────────────────────
 
+    def surrender(self):
+        """Give up a bridge attempt and release resources. Called when a
+        temporary leader (bridge recovery) fails to connect, or when an
+        intentional force_leader handoff steps this controller down."""
+        self._release_bridge()
+
     def _release_bridge(self):
+        if self.bridge is None:
+            return
         try:
-            self.bridge.close()
+            self.bridge.release()      # keeps WiFi active — ESP-NOW stays alive
         except Exception:
             pass
         self.bridge     = None
         self._retry_ms  = BRIDGE_RETRY_INIT_MS
         self._cap_fails = 0
-        _log.write('main', 'released bridge — leadership handed off')
+        _log.write('main', 'released bridge')
 
     def _advance_connect(self, now_ms):
         if self.bridge is None:

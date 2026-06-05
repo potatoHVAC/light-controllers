@@ -12,7 +12,7 @@ from config import THEMES as _THEME_DEFS
 from controller import Controller
 from mesh import Mesh
 from leader_link import LeaderLink
-from recovery import FollowerRecovery
+from recovery import FollowerRecovery, BridgeRecovery
 import slots
 import log as _log
 
@@ -173,7 +173,8 @@ def _execute_bridge_command(cmd, ctrl, now_ms, wdt=None):
         if ctrl._network and target == ctrl._network.mac:
             ctrl.force_leader()
         elif ctrl.is_leader:
-            ctrl.step_down()                          # this (relaying) leader yields
+            ctrl.step_down()
+            link.surrender()                          # release bridge for clean handoff
     elif cmd_type == 'default':
         if ctrl._network:
             ctrl._network.send_default()
@@ -238,8 +239,9 @@ def _main():
     while not controller.tick_start(time.ticks_ms(), button.update(time.ticks_ms()) is not None):
         wdt.feed()
 
-    link     = LeaderLink(mesh)
-    recovery = FollowerRecovery(time.ticks_ms())
+    link             = LeaderLink(mesh)
+    recovery         = FollowerRecovery(time.ticks_ms())
+    bridge_recovery  = BridgeRecovery('leader' in (dev.get('tags') or []))
     if controller.is_leader:
         link.make_bridge()
 
@@ -263,6 +265,7 @@ def _main():
                 _execute_bridge_command(cmd, controller, now_ms, wdt)
 
             recovery.tick(controller, mesh, now_ms)
+            bridge_recovery.tick(controller, link, mesh, now_ms)
 
             if controller.ota_requested:
                 _run_ota(wdt)

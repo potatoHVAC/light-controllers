@@ -275,5 +275,11 @@ Big structural work for after the current phase and roadmap. The **leader failsa
 
 New things that need to be added to groups, roadmap, or active bugs. Do not delete this section when items have been transferred.
 
-- (empty)
-- 
+- change config save indication to green lights instead of red. 
+- deploy button for a specific controller fires of config updates for all controllers.
+- if the active config shares the same hash as the incomming config i want it to abort and log a warning. I never want both version on a controller to be the same. we might need a way to override this incase something is weird with a deployment and we want a fresh install. 
+- clarify if the mesh is active and for whatever reason a lower priority controller is leader or establishes the bridge and becomes leader I want to make sure the highest tier controllers are made aware and start attempting to connect and take over as leader. I want the mesh to always fail down to the lowest priority but if there ever is a higher option that one should attempt to takeover as long as a lower tier controller has established that a bridge is possible. 
+- come up with a random system of selection for leader from a given priority level I don't want it to be deterministic such that the same controller in a small set is always leader. I want the responsability shared across all possible candidates from show to show. It's fine if the leader never fails in a single show and stays the same. I just don't want it to always be the one with the lowest mac address always doing the job. 
+- Phase 2: revisit the leadership model to ensure the raspberry pi controllers always take leadership unless they go off line then the mesh recovers with a lower tier leader. Probably just add another class higher than leader tag. 
+- add clear log buttons on each log display to wipe the display clean. 
+- if the leader gets an individual command to deploy it will imediately release leadership to the election and start an update. 

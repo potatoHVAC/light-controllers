@@ -135,16 +135,14 @@ class Bridge:
 
         return None
 
-    def close(self):
-        """Tear the bridge down cleanly and power down the WiFi STA so the radio
-        returns fully to ESP-NOW. Used when leadership is handed to another
-        controller (forced leader switch)."""
+    def release(self):
+        """Tear the bridge down (close sockets, disconnect from the AP) but keep
+        the WiFi STA ACTIVE. ESP-NOW runs on the WiFi radio and requires an active
+        STA — deactivating it would silence the mesh and trigger a re-election
+        cascade. Disconnecting from the AP frees the server connection for a new
+        leader while the radio stays on the (unchanged) mesh channel for ESP-NOW.
+        Used when this controller loses leadership or hands it off."""
         self._fail()
-        if self._sta:
-            try:
-                self._sta.active(False)
-            except Exception:
-                pass
 
     def _fail(self):
         self._close_disc_sock()
