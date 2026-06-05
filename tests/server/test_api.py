@@ -160,3 +160,57 @@ def test_controllers_sort_named_first_then_mac_order(tmp_path):
     assert nicknames.index('Zebra') < result.index(
         next(c for c in result if c['mac'] == 'mac2')
     )
+
+
+# ── shows ─────────────────────────────────────────────────────────────────────
+
+def test_save_show_creates_with_roster_and_tags(tmp_path):
+    api, db, link = _api(tmp_path)
+    show = api.save_show(None, {'name': 'Friday', 'default_theme': 'blue'},
+                         controllers=['mac1', 'mac2'], tags=['outdoor'])
+    assert show['name'] == 'Friday'
+    assert show['controllers'] == ['mac1', 'mac2']
+    assert show['tags'] == ['outdoor']
+
+
+def test_save_show_updates_existing(tmp_path):
+    api, db, link = _api(tmp_path)
+    show = api.save_show(None, {'name': 'Gig', 'default_theme': 'red'})
+    api.save_show(show['id'], {'name': 'Gig', 'default_theme': 'blue'})
+    assert db.get_show(show['id'])['default_theme'] == 'blue'
+
+
+def test_shows_lists_with_active_id(tmp_path):
+    api, db, link = _api(tmp_path)
+    s = api.save_show(None, {'name': 'Gig'})
+    assert api.shows()['active_id'] is None
+    api.activate_show(s['id'])
+    out = api.shows()
+    assert out['active_id'] == s['id']
+    assert len(out['shows']) == 1
+
+
+def test_activate_show_pushes_defaults_to_mesh(tmp_path):
+    api, db, link = _api(tmp_path)
+    s = api.save_show(None, {'name': 'Gig', 'default_theme': 'blue',
+                             'default_scene': 'breathe', 'default_color': '#ff0000'})
+    api.activate_show(s['id'])
+    cmd, _ = link.sent[-1]
+    assert cmd['type'] == 'change'
+    assert cmd['theme'] == 'blue' and cmd['scene'] == 'breathe'
+    assert cmd['color'] == [255, 0, 0]
+
+
+def test_activate_show_without_theme_sends_nothing(tmp_path):
+    api, db, link = _api(tmp_path)
+    s = api.save_show(None, {'name': 'Empty'})
+    before = len(link.sent)
+    api.activate_show(s['id'])
+    assert len(link.sent) == before        # no change command sent
+
+
+def test_delete_show(tmp_path):
+    api, db, link = _api(tmp_path)
+    s = api.save_show(None, {'name': 'Gig'})
+    api.delete_show(s['id'])
+    assert db.get_show(s['id']) is None

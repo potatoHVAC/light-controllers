@@ -13,6 +13,19 @@ def short_mac(mac):
     return mac[-6:].upper() if mac else '??????'
 
 
+def _parse_color(value):
+    """'#rrggbb' (or 'rrggbb') -> [r, g, b], or None if unparseable."""
+    if not value:
+        return None
+    s = value.lstrip('#')
+    if len(s) != 6:
+        return None
+    try:
+        return [int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)]
+    except ValueError:
+        return None
+
+
 class Api:
     def __init__(self, db, link, log, root, themes):
         self._db     = db
@@ -251,6 +264,68 @@ class Api:
 
     def update_defaults(self, fields):
         return self._db.update_defaults(**fields)
+
+    # ── shows ──────────────────────────────────────────────────────────────────
+
+    def shows(self):
+        active = self._db.get_active_show()
+        return {
+            'shows': self._db.list_shows(),
+            'active_id': active['id'] if active else None,
+        }
+
+    def show(self, show_id):
+        return self._db.get_show(int(show_id))
+
+    def save_show(self, show_id, fields, controllers=None, tags=None):
+        """Create (show_id falsy) or update a show, plus its roster and tags."""
+        if show_id:
+            show = self._db.update_show(int(show_id), **fields)
+        else:
+            name = fields.get('name') or 'New Show'
+            rest = {k: v for k, v in fields.items() if k != 'name'}
+            show = self._db.create_show(name, **rest)
+        sid = show['id']
+        if controllers is not None:
+            self._db.set_show_controllers(sid, controllers)
+        if tags is not None:
+            self._db.set_show_tags(sid, tags)
+        self._log.write(f'Show saved: {show.get("name")}')
+        return self._db.get_show(sid)
+
+    def delete_show(self, show_id):
+        self._db.delete_show(int(show_id))
+        return True
+
+    def activate_show(self, show_id):
+        """Make a show active and push its defaults (theme/scene/color) to the mesh."""
+        show = self._db.set_active_show(int(show_id))
+        if not show:
+            return False
+        self._log.write(f'Activated show: {show.get("name")}')
+        if show.get('default_theme'):
+            return self._change_color(show['default_theme'], show.get('default_scene'),
+                                      show.get('default_color'))
+        return True
+
+    def deploy_show(self, show_id):
+        """Push the active-show defaults to the mesh without changing selection."""
+        show = self._db.get_show(int(show_id))
+        if not show or not show.get('default_theme'):
+            return False
+        return self._change_color(show['default_theme'], show.get('default_scene'),
+                                  show.get('default_color'))
+
+    def _change_color(self, theme, scene, color):
+        """Like _change but with an explicit color override (shows carry their own)."""
+        cmd = {'type': 'change', 'theme': theme, 'scene': scene}
+        if color:
+            cmd['color'] = _parse_color(color)
+        if theme is not None:
+            self._link.mesh_state['theme'] = theme
+        if scene is not None:
+            self._link.mesh_state['scene'] = scene
+        return self._link.send_command(cmd)
 
 
 def _wire_config(cfg):

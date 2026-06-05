@@ -65,6 +65,12 @@ def _post_routes():
         '/api/save_config':        lambda a, d: a.save_config(
                                        d['mac'], d.get('fields', {}), d.get('tags')),
         '/api/defaults':           lambda a, d: a.update_defaults(d.get('fields', {})),
+        '/api/save_show':          lambda a, d: a.save_show(
+                                       d.get('id'), d.get('fields', {}),
+                                       d.get('controllers'), d.get('tags')),
+        '/api/delete_show':        lambda a, d: a.delete_show(d['id']),
+        '/api/activate_show':      lambda a, d: a.activate_show(d['id']),
+        '/api/deploy_show':        lambda a, d: a.deploy_show(d['id']),
     }
 
 
@@ -80,6 +86,8 @@ def _get_routes():
         '/api/server_log':  lambda a, q: a.server_log(),
         '/api/mesh_log':    lambda a, q: a.mesh_log(),
         '/api/config':      lambda a, q: a.config(q.get('mac', [None])[0]),
+        '/api/shows':       lambda a, q: a.shows(),
+        '/api/show':        lambda a, q: a.show(q.get('id', [None])[0]),
     }
 
 

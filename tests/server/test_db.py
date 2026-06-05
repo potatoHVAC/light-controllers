@@ -104,3 +104,76 @@ def test_list_controllers_sorted():
     db.upsert_controller('m1', nickname='Abe')
     names = [c['nickname'] for c in db.list_controllers()]
     assert names == ['Abe', 'Zed']
+
+
+# ── shows ─────────────────────────────────────────────────────────────────────
+
+def test_create_and_get_show():
+    db = _db()
+    s = db.create_show('Friday Gig', default_theme='blue', default_scene='breathe')
+    assert s['name'] == 'Friday Gig'
+    assert s['default_theme'] == 'blue'
+    assert s['controllers'] == [] and s['tags'] == []
+    assert db.get_show(s['id'])['name'] == 'Friday Gig'
+
+
+def test_list_shows_sorted_by_name():
+    db = _db()
+    db.create_show('Zed Show')
+    db.create_show('Alpha Show')
+    assert [s['name'] for s in db.list_shows()] == ['Alpha Show', 'Zed Show']
+
+
+def test_update_show():
+    db = _db()
+    s = db.create_show('Gig', default_theme='red')
+    db.update_show(s['id'], default_theme='blue', name='Gig 2')
+    s2 = db.get_show(s['id'])
+    assert s2['name'] == 'Gig 2' and s2['default_theme'] == 'blue'
+
+
+def test_show_roster_and_multi_show_membership():
+    db = _db()
+    a = db.create_show('A')
+    b = db.create_show('B')
+    db.set_show_controllers(a['id'], ['mac1', 'mac2'])
+    db.set_show_controllers(b['id'], ['mac1'])          # mac1 in both shows
+    assert db.show_controllers(a['id']) == ['mac1', 'mac2']
+    assert db.show_controllers(b['id']) == ['mac1']
+    assert sorted(db.shows_for_controller('mac1')) == sorted([a['id'], b['id']])
+    assert db.shows_for_controller('mac2') == [a['id']]
+
+
+def test_add_show_controller_idempotent():
+    db = _db()
+    s = db.create_show('A')
+    db.add_show_controller(s['id'], 'mac1')
+    db.add_show_controller(s['id'], 'mac1')             # dupe ignored
+    assert db.show_controllers(s['id']) == ['mac1']
+
+
+def test_active_show_select_and_clear_on_delete():
+    db = _db()
+    s = db.create_show('Gig')
+    assert db.get_active_show() is None
+    db.set_active_show(s['id'])
+    assert db.get_active_show()['id'] == s['id']
+    db.delete_show(s['id'])
+    assert db.get_active_show() is None                 # cleared when the show is deleted
+
+
+def test_delete_show_removes_roster_and_tags():
+    db = _db()
+    s = db.create_show('Gig')
+    db.set_show_controllers(s['id'], ['mac1'])
+    db.set_show_tags(s['id'], ['outdoor'])
+    db.delete_show(s['id'])
+    assert db.get_show(s['id']) is None
+    assert db.show_controllers(s['id']) == []
+
+
+def test_show_tags():
+    db = _db()
+    s = db.create_show('Gig')
+    db.set_show_tags(s['id'], ['outdoor', 'acoustic'])
+    assert db.get_show(s['id'])['tags'] == ['acoustic', 'outdoor']

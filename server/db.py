@@ -46,10 +46,30 @@ CREATE TABLE IF NOT EXISTS defaults (
     unassigned_strip2_leds INTEGER NOT NULL DEFAULT 0,
     unassigned_strip3_leds INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS shows (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    default_theme TEXT,
+    default_scene TEXT,
+    default_color TEXT,
+    created_at    REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS show_controllers (
+    show_id        INTEGER NOT NULL,
+    controller_mac TEXT NOT NULL,
+    PRIMARY KEY (show_id, controller_mac)
+);
+CREATE TABLE IF NOT EXISTS show_tags (
+    show_id INTEGER NOT NULL,
+    tag_id  INTEGER NOT NULL,
+    PRIMARY KEY (show_id, tag_id)
+);
 """
 
 _CONFIG_FIELDS = ('nickname', 'strip1_leds', 'strip2_leds', 'strip3_leds',
                   'default_theme', 'default_scene', 'default_color')
+
+_SHOW_FIELDS = ('name', 'default_theme', 'default_scene', 'default_color')
 
 
 class Database:
@@ -70,6 +90,10 @@ class Database:
             # Backfill: controllers that already have a nickname were user-defined.
             self._conn.execute(
                 "UPDATE controllers SET has_custom_nickname = 1 WHERE nickname IS NOT NULL AND nickname != ''")
+
+        dcols = {r[1] for r in self._conn.execute("PRAGMA table_info(defaults)")}
+        if 'active_show_id' not in dcols:
+            self._conn.execute("ALTER TABLE defaults ADD COLUMN active_show_id INTEGER")
 
     # ── controllers ──────────────────────────────────────────────────────────
 
@@ -167,6 +191,106 @@ class Database:
                                list(fields.values()))
             self._conn.commit()
         return self.get_defaults()
+
+    # ── shows ─────────────────────────────────────────────────────────────────
+
+    def create_show(self, name, **fields):
+        fields = {k: v for k, v in fields.items() if k in _SHOW_FIELDS and k != 'name'}
+        cols = ['name', 'created_at'] + list(fields)
+        vals = [name, time.time()] + [fields[k] for k in fields]
+        ph = ','.join('?' * len(cols))
+        cur = self._conn.execute(
+            f"INSERT INTO shows ({','.join(cols)}) VALUES ({ph})", vals)
+        self._conn.commit()
+        return self.get_show(cur.lastrowid)
+
+    def get_show(self, show_id):
+        cur = self._conn.execute("SELECT * FROM shows WHERE id=?", (show_id,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        d['controllers'] = self.show_controllers(show_id)
+        d['tags'] = self.show_tags(show_id)
+        return d
+
+    def list_shows(self):
+        cur = self._conn.execute("SELECT id FROM shows ORDER BY name")
+        return [self.get_show(r['id']) for r in cur.fetchall()]
+
+    def update_show(self, show_id, **fields):
+        fields = {k: v for k, v in fields.items() if k in _SHOW_FIELDS}
+        if fields:
+            sets = ', '.join(f"{k}=?" for k in fields)
+            self._conn.execute(f"UPDATE shows SET {sets} WHERE id=?",
+                               list(fields.values()) + [show_id])
+            self._conn.commit()
+        return self.get_show(show_id)
+
+    def delete_show(self, show_id):
+        self._conn.execute("DELETE FROM show_controllers WHERE show_id=?", (show_id,))
+        self._conn.execute("DELETE FROM show_tags WHERE show_id=?", (show_id,))
+        self._conn.execute("DELETE FROM shows WHERE id=?", (show_id,))
+        self._conn.execute(
+            "UPDATE defaults SET active_show_id=NULL WHERE active_show_id=?", (show_id,))
+        self._conn.commit()
+
+    # roster — a show's expected controllers (a controller may be in many shows)
+
+    def show_controllers(self, show_id):
+        cur = self._conn.execute(
+            "SELECT controller_mac AS mac FROM show_controllers "
+            "WHERE show_id=? ORDER BY controller_mac", (show_id,))
+        return [r['mac'] for r in cur.fetchall()]
+
+    def set_show_controllers(self, show_id, macs):
+        self._conn.execute("DELETE FROM show_controllers WHERE show_id=?", (show_id,))
+        for m in macs:
+            if m:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO show_controllers VALUES (?, ?)", (show_id, m))
+        self._conn.commit()
+
+    def add_show_controller(self, show_id, mac):
+        self._conn.execute(
+            "INSERT OR IGNORE INTO show_controllers VALUES (?, ?)", (show_id, mac))
+        self._conn.commit()
+
+    def shows_for_controller(self, mac):
+        cur = self._conn.execute(
+            "SELECT show_id FROM show_controllers WHERE controller_mac=?", (mac,))
+        return [r['show_id'] for r in cur.fetchall()]
+
+    # show tags (reserved for future use)
+
+    def show_tags(self, show_id):
+        cur = self._conn.execute(
+            "SELECT t.name FROM tags t JOIN show_tags st ON st.tag_id=t.id "
+            "WHERE st.show_id=? ORDER BY t.name", (show_id,))
+        return [r['name'] for r in cur.fetchall()]
+
+    def set_show_tags(self, show_id, names):
+        self._conn.execute("DELETE FROM show_tags WHERE show_id=?", (show_id,))
+        for name in names:
+            name = name.strip()
+            if name:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO show_tags VALUES (?, ?)",
+                    (show_id, self._tag_id(name)))
+        self._conn.commit()
+
+    # active show
+
+    def get_active_show(self):
+        cur = self._conn.execute("SELECT active_show_id FROM defaults WHERE id=1")
+        row = cur.fetchone()
+        sid = row['active_show_id'] if row else None
+        return self.get_show(sid) if sid else None
+
+    def set_active_show(self, show_id):
+        self._conn.execute("UPDATE defaults SET active_show_id=? WHERE id=1", (show_id,))
+        self._conn.commit()
+        return self.get_active_show()
 
     def close(self):
         self._conn.close()
