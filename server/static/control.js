@@ -78,6 +78,7 @@ function setBridgeState(connected) {
 
 function refresh() {
   api.get('status').then(s => {
+    el('show-name').textContent = s.show_name || '';
     el('theme').textContent = s.theme || '—';
     el('scene').textContent = s.scene || '—';
     el('dim').textContent   = Math.round((s.dim || 0) * 100) + '%';

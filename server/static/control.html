@@ -9,10 +9,15 @@
   <title>Light Controllers</title>
 </head>
 <body>
-  <h1>Light Controllers <a href="/admin">admin &rarr;</a></h1>
+  <nav class="nav">
+    <a href="/" class="active">Control</a>
+    <a href="/admin">Admin</a>
+    <a href="/shows">Shows</a>
+  </nav>
   <div id="bridge-banner" class="bridge-banner hidden">Bridge offline &mdash; send actions disabled</div>
 
   <div class="card">
+    <div id="show-name" class="show-name"></div>
     <div class="status">
       Theme <b id="theme">—</b> &nbsp; Scene <b id="scene">—</b><br>
       Dim <b id="dim">—</b> &nbsp; Controllers <b id="count">—</b><br>

@@ -8,8 +8,13 @@ body {
   font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
   padding: 16px; max-width: 560px; margin: 0 auto; -webkit-tap-highlight-color: transparent;
 }
-h1 { color: var(--accent); font-size: 20px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: baseline; }
-h1 a { font-size: 13px; }
+.nav { display: flex; gap: 8px; margin-bottom: 14px; }
+.nav a {
+  flex: 1; text-align: center; padding: 10px; border-radius: 6px;
+  background: var(--card); border: 1px solid var(--line); color: var(--text);
+  font-size: 14px; font-weight: bold;
+}
+.nav a.active { background: var(--btn); border-color: var(--accent); color: #fff; }
 a { color: var(--accent); text-decoration: none; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
 .card h2 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
@@ -74,6 +79,11 @@ button.lights-off-active { background: var(--err); border: 1px solid var(--err);
 .tag-chip.role { background: #3a2222; color: #d88; }
 .strips { display: flex; gap: 6px; }
 .strips input { width: 33%; }
+.show-name { font-size: 17px; font-weight: bold; color: var(--accent); margin-bottom: 8px; }
+.show-name:empty { display: none; }
+.roster { margin-top: 4px; max-height: 180px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+.roster-item { display: flex; align-items: center; gap: 6px; margin: 0; padding: 3px 0; font-size: 13px; color: var(--text); }
+.roster-item input { width: auto; margin: 0; }
 .tag-wrap { position: relative; display: flex; gap: 6px; margin-top: 4px; }
 .tag-wrap input { flex: 1; margin-top: 0; }
 .tag-wrap .tag-btn { flex: none; padding: 8px 14px; font-size: 16px; line-height: 1; }

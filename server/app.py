@@ -103,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static('control.html')
         if path == '/admin':
             return self._static('admin.html')
+        if path == '/shows':
+            return self._static('shows.html')
         if path == '/manifest.webmanifest':
             return self._static('manifest.webmanifest')
         if path.startswith('/static/'):

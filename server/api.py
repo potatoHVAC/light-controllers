@@ -62,6 +62,8 @@ class Api:
             s['leader_name'] = (cfg or {}).get('nickname') or short_mac(leader_mac)
         else:
             s['leader_name'] = None
+        active = self._db.get_active_show()
+        s['show_name'] = active['name'] if active else None
         return s
 
     def controllers(self):

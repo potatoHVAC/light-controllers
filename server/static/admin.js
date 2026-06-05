@@ -269,39 +269,28 @@ function deleteConfig() {
   api.post('delete_config', { mac }).then(() => { closeEditor(); refresh(); });
 }
 
-// ── defaults ─────────────────────────────────────────────────────────────────
+// ── active show selector ──────────────────────────────────────────────────────
 
-function toggleDefaultsEdit() {
-  const editor = el('defaults-editor');
-  editor.style.display = editor.style.display === 'none' ? 'block' : 'none';
+let ACTIVE_SHOW_ID = null;   // currently active show id, to detect real changes
+
+function renderShowSelect(shows, activeId) {
+  ACTIVE_SHOW_ID = activeId;
+  const sel = el('active-show-select');
+  sel.innerHTML = '<option value="">— none —</option>' +
+    shows.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  sel.value = activeId || '';
 }
 
-function renderDefaultsDisplay(d) {
-  const leds = [d.unassigned_strip1_leds, d.unassigned_strip2_leds, d.unassigned_strip3_leds]
-    .filter(Boolean);
-  const parts = [
-    d.unassigned_theme, d.unassigned_scene, d.unassigned_color,
-    leds.length ? leds.join('/') + ' LEDs' : null,
-  ].filter(Boolean).join(' · ') || '—';
-  el('defaults-display').innerHTML = `<b>${escapeHtml(parts)}</b>`;
-}
-
-function saveDefaults() {
-  const fields = {
-    unassigned_theme: el('def_theme').value || null,
-    unassigned_scene: el('def_scene').value.trim() || null,
-    unassigned_color: el('def_color').value.trim() || null,
-    unassigned_strip1_leds: +el('def_s1').value || 0,
-    unassigned_strip2_leds: +el('def_s2').value || 0,
-    unassigned_strip3_leds: +el('def_s3').value || 0,
-  };
-  el('defstatus').textContent = 'Saving…';
-  api.post('defaults', { fields }).then(d => {
-    DEFAULTS = d;
-    renderDefaultsDisplay(d);
-    el('defstatus').textContent = 'Saved.';
-    el('defaults-editor').style.display = 'none';
-  });
+function onActiveShowChange() {
+  const sel = el('active-show-select');
+  const id = sel.value;
+  if (!id) { sel.value = ACTIVE_SHOW_ID || ''; return; }   // ignore "none"
+  const name = sel.options[sel.selectedIndex].text;
+  if (!confirm('Switch the active show to "' + name + '"?\nIts theme/scene/color will be applied to the whole rig.')) {
+    sel.value = ACTIVE_SHOW_ID || '';   // revert the dropdown
+    return;
+  }
+  api.post('activate_show', { id: +id }).then(() => { ACTIVE_SHOW_ID = +id; });
 }
 
 // ── refresh ───────────────────────────────────────────────────────────────────
@@ -309,9 +298,6 @@ function saveDefaults() {
 function refresh() {
   api.get('status').then(s => {
     el('count').textContent   = s.controllers;
-    el('theme').textContent   = s.theme || '—';
-    el('scene').textContent   = s.scene || '—';
-    el('dim').textContent     = Math.round((s.dim || 1) * 100) + '%';
     el('version').textContent = s.version;
     el('bridge').innerHTML    = s.connected
       ? `<span class="pill on">Bridge → ${escapeHtml(s.leader_name || '?')}</span>`
@@ -325,18 +311,13 @@ function refresh() {
     api.get('controllers').then(renderControllers).catch(() => {});
   }
 
-  api.get('defaults').then(d => {
-    DEFAULTS = d;
-    renderDefaultsDisplay(d);
-    if (el('defaults-editor').style.display === 'none') {
-      themeOptions(el('def_theme'), d.unassigned_theme);
-      el('def_scene').value = d.unassigned_scene || '';
-      el('def_color').value = d.unassigned_color || '';
-      el('def_s1').value = d.unassigned_strip1_leds;
-      el('def_s2').value = d.unassigned_strip2_leds;
-      el('def_s3').value = d.unassigned_strip3_leds;
-    }
-  }).catch(() => {});
+  // Keep DEFAULTS for the per-controller defaults diff in the list.
+  api.get('defaults').then(d => { DEFAULTS = d; }).catch(() => {});
+
+  // Active-show selector — don't clobber it while the dropdown is focused.
+  if (document.activeElement !== el('active-show-select')) {
+    api.get('shows').then(d => renderShowSelect(d.shows, d.active_id)).catch(() => {});
+  }
 
   api.get('server_log').then(e => renderLog(e, 'server-log')).catch(() => {});
   api.get('mesh_log').then(e => renderLog(e, 'mesh-log')).catch(() => {});

@@ -153,14 +153,13 @@ Completed capabilities (an index — the "how" lives in **Architecture** above).
 - **Controller identity** — identified by MAC (short form = last 6 hex); admin lists online + assigned controllers and can `identify` a unit (orange blink overlaid on the running pattern, first 3 LEDs, 2s).
 - **Special tags** — leader / button-box / light / no-solo, color-coded, with a picker and reference card (election behavior is specced, not yet wired).
 - **Firmware version tracking** — SHA-256 hash, deploy all/outdated, deploy all configs, hash-debug view.
+- **Shows** — named shows in their own DB table (`shows`/`show_controllers`/`show_tags`) with a default theme/scene/color and an expected-controller roster (a controller can be in many shows). Dedicated `/shows` editor page: active-show selector, add/edit/delete/deploy per show, inline roster checkboxes. Activating a show pushes its theme/scene/color to the mesh; `active_show_id` lives on the defaults singleton.
+- **Config auto-sync on check-in** — the server pushes a controller's config automatically when it reports a stale config version in a heartbeat (registry check-in callback). Plus a per-controller Deploy button (targeted firmware OTA; config survives OTA and auto-syncs).
+- **Leader-deferred OTA** — when the leader is told to update it relays to the mesh first and holds its own download 30s so followers update before the bridge drops.
 
 # Grouped Work (current backlog)
 
 Worked in numbered groups. **On finishing a group:** delete its todos here, add the capability to the Feature Outline above, and produce a completed report + a commit message. The Roadmap and Phase Two (at the bottom) are tracked separately and not part of this backlog.
-
-### Group 1 — Shows system
-- Show configs in their own DB table (not the `defaults` singleton): name, default theme/scene/color (pushed to the mesh, not a firmware change), and an expected-controller roster. A controller can appear in multiple shows; shows have no strip counts (those belong to the controller). Shows can carry tags (reserved). Selecting the active show pushes its defaults to the mesh.
-- Separate show/controller editor page: starts with the show list; add (fresh show section with save/discard), edit (inline under the show with save/discard), delete (confirm), deploy button per show.
 
 ### Group 2 — Roster & offline tracking (builds on Group 1)
 - Admin: gray out previously-seen offline controllers; per-config "important" toggle (default true for named, false for unnamed) controlling whether a missing controller persists or disappears; remove-from-show (keep the config); per-controller deploy dropdown listing non-responding roster members, then a separator, then all configs A–Z; deploying a config to a new unit auto-removes the matching disconnected one; deploying the same config to multiple online units lets them run as duplicates (ordered by who came online first).
@@ -211,8 +210,6 @@ Worked in numbered groups. **On finishing a group:** delete its todos here, add 
 Future work and specs beyond the current backlog, but before Phase Two. Pull items into a numbered group when they become active.
 
 - **Tag/group commands:** the tag↔MAC mapping exists (`db.macs_with_tag`) and tag-group *solo* ships; remaining is turning a tag into other group actions (e.g. "dim all horns", set a theme by tag).
-
-- **Config auto-sync on check-in:** when a controller checks in reporting an older config version than the DB holds (e.g. it was offline when the config changed), the server should push the current config automatically rather than only on edit.
 
 - **OTA passive self-update:** have a controller compare its firmware version on boot and self-update without a push (the push deploy stays as the override). The version/hash/report/deploy-outdated infrastructure already ships.
 
@@ -282,4 +279,6 @@ New things that need to be added to groups, roadmap, or active bugs. Do not dele
 - come up with a random system of selection for leader from a given priority level I don't want it to be deterministic such that the same controller in a small set is always leader. I want the responsability shared across all possible candidates from show to show. It's fine if the leader never fails in a single show and stays the same. I just don't want it to always be the one with the lowest mac address always doing the job. 
 - Phase 2: revisit the leadership model to ensure the raspberry pi controllers always take leadership unless they go off line then the mesh recovers with a lower tier leader. Probably just add another class higher than leader tag. 
 - add clear log buttons on each log display to wipe the display clean. 
-- if the leader gets an individual command to deploy it will imediately release leadership to the election and start an update. 
+- if the leader gets an individual command to deploy it will imediately release leadership to the election and start an update.
+- bug: changing config to reduce light count doesn't clear the old data so extra lights stay on. 
+- bug: after turning lights off the button should say 'Lights On'

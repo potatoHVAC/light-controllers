@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111">
+  <link rel="stylesheet" href="/static/app.css">
+  <title>Light Controllers — Shows</title>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/">Control</a>
+    <a href="/admin">Admin</a>
+    <a href="/shows" class="active">Shows</a>
+  </nav>
+
+  <div class="card">
+    <h2>Active show</h2>
+    <div class="row">
+      <select id="active-select"></select>
+      <button class="warnbtn" style="flex:none" onclick="activateSelected()">Activate</button>
+    </div>
+    <div class="muted" style="margin-top:6px">Activating pushes the show's theme/scene/color to the whole rig.</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0">All shows</h2>
+      <button style="font-size:11px;padding:4px 8px;flex:none" onclick="newShow()">+ Add show</button>
+    </div>
+    <div id="new-show-anchor"></div>
+    <div id="shows-list" style="margin-top:10px"><div class="muted">Loading…</div></div>
+  </div>
+
+  <!-- Reusable editor, moved inline under the show being edited -->
+  <div id="show-editor" class="card" style="display:none">
+    <h2 id="show-editor-title">Edit show</h2>
+    <input type="hidden" id="show_id">
+    <label>Name</label><input type="text" id="show_name">
+    <label>Default theme</label>
+    <select id="show_theme" onchange="sceneOptions(el('show_scene'), this.value, '')"></select>
+    <label>Default scene</label><select id="show_scene"></select>
+    <label>Default color (hex, optional)</label><input type="text" id="show_color" placeholder="#ff0000">
+    <label>Roster — controllers expected in this show</label>
+    <div id="show_roster" class="roster"></div>
+    <label>Tags (comma separated, reserved)</label>
+    <input type="text" id="show_tags" placeholder="outdoor, acoustic">
+    <div class="row" style="margin-top:12px">
+      <button onclick="saveShow()">Save</button>
+      <button class="danger" onclick="deleteShow()">Delete</button>
+      <button onclick="closeEditor()">Discard</button>
+    </div>
+    <div id="show-status" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <script src="/static/common.js"></script>
+  <script src="/static/shows.js"></script>
+</body>
+</html>

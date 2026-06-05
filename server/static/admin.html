@@ -8,40 +8,25 @@
   <title>Light Controllers — Admin</title>
 </head>
 <body>
-  <h1>Admin <a href="/">&larr; control</a></h1>
+  <nav class="nav">
+    <a href="/">Control</a>
+    <a href="/admin" class="active">Admin</a>
+    <a href="/shows">Shows</a>
+  </nav>
   <div id="bridge-banner" class="bridge-banner hidden">Bridge offline &mdash; deploy and identify disabled</div>
 
   <div class="card">
     <h2>Mesh</h2>
     <div class="status">
       Controllers <b id="count">—</b> &nbsp; <span id="bridge"></span> <span id="auto"></span><br>
-      Theme <b id="theme">—</b> &nbsp; Scene <b id="scene">—</b> &nbsp; Dim <b id="dim">—</b><br>
       Firmware <b id="version" class="muted">—</b>
     </div>
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">Show Defaults</h2>
-      <button style="font-size:11px;padding:4px 8px;flex:none" onclick="toggleDefaultsEdit()">Edit</button>
-    </div>
-    <div id="defaults-display" class="muted">Loading…</div>
-    <div id="defaults-editor" style="display:none;margin-top:12px">
-      <label>Show theme</label><select id="def_theme"></select>
-      <label>Show scene</label><input type="text" id="def_scene">
-      <label>Show color (hex)</label><input type="text" id="def_color">
-      <label>Show strip LED counts</label>
-      <div class="strips">
-        <input type="number" id="def_s1" min="0">
-        <input type="number" id="def_s2" min="0">
-        <input type="number" id="def_s3" min="0">
-      </div>
-      <div class="row" style="margin-top:12px">
-        <button onclick="saveDefaults()">Save</button>
-        <button onclick="toggleDefaultsEdit()">Cancel</button>
-      </div>
-      <div id="defstatus" class="muted" style="margin-top:6px"></div>
-    </div>
+    <h2>Active show</h2>
+    <select id="active-show-select" onchange="onActiveShowChange()"></select>
+    <div class="muted" style="margin-top:6px">Selecting a show applies its theme/scene/color to the whole rig. Edit shows on the <a href="/shows">shows page</a>.</div>
   </div>
 
   <div class="card">
