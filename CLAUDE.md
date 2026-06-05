@@ -171,7 +171,7 @@ Worked in numbered groups. **On finishing a group:** delete its todos here, add 
 - Give every controller a built-in default config as a fallback / control target; make its presence hash-aware so a missing one reads as out of date. (Coordinate with Group 4's dual-hash.)
 
 ### Group 4 — Repo & integrity refactor
-- Mirror the on-device slot layout in the repo; move all scripts (incl. those in subdirs) to `/bin` while keeping root-level device files at the repo root.
+- Mirror the on-device slot layout in the repo; move all scripts (incl. those in subdirs) to `/bin`. move all controller specific files into a `/controller` directory with a flat structure that holds all controler specific files.
 - Dual firmware hash: existing hash tracks only OTA-updatable files; a new, unadvertised hash tracks the wired-only sensitive files (the trusted base). On mismatch, flag the controller bold red on the admin page with a "use a hardline and reflash fresh" message.
 - Database validation to prevent committing bad data.
 
@@ -179,9 +179,14 @@ Worked in numbered groups. **On finishing a group:** delete its todos here, add 
 - Toggle at the top of the actions: free-mesh mode vs control-plane-only (only the control plane may send changes). Default: free command mode.
 
 ### Group 6 — Solo / dim / color UI polish
+- **Bug:** tag-solo dims all controllers instead of making the tagged ones soloists — controllers with the matching tag should go to the master level, others should dim to the background fraction.
+- **Bug:** special tags (leader, button-box, light, no-solo) should always appear in the tag picker even when no controller has used them yet.
+- **Bug:** duplicate tags should be automatically deduplicated when saving a config.
 - Color wheel for default colors, with an optional text input below.
 - Dimmer-slider shadow showing the previous dim position while the lights-off toggle is engaged.
 - Tag-solo highlights the soloists it activates in the grid; clicking one of those overrides the tag solo and hands control to that single soloist; a further click disables solo as normal.
+- Personal mode indicator on the top status card of both the control and admin pages (theme/scene show a dashed line when the mesh is in personal mode).
+- Independent mode indicator on the top status card of both pages showing when any controller is in independent mode.
 
 ### Group 7 — Pattern positioning
 - Optional start/end light offset: skip the first N LEDs; end is either an absolute light position or "Z lights ahead of start" (count inclusive of the start), toggleable.
@@ -225,7 +230,7 @@ Future work and specs beyond the current backlog, but before Phase Two. Pull ite
 
 - **Beat-sync patterns:** patterns that accept BPM and pulse on the beat. BPM set manually or broadcast from the main.
 
-- **Venue WiFi push:** a server command pushes WiFi credentials to all controllers over the hotspot so they join the venue network directly. Needs care around ESP-NOW channel conflicts and recovery if venue WiFi drops.
+- **WiFi credential management:** Controllers store two WiFi credential sets — a *fallback* hotspot (permanent, the show hotspot) and a *temporary* one (venue WiFi, optional). On connect, the temporary is tried first; if it fails or is absent, the fallback is used. Admin page has a dedicated card to push new credentials for either slot and a button to clear the temporary. All credentials pushed over the network must be encrypted and unpacked by each controller (the existing HMAC-signed command channel provides integrity; a lightweight symmetric cipher or the existing bridge secret can provide confidentiality). Needs care around ESP-NOW channel conflicts when switching to venue WiFi, and clean recovery if venue WiFi drops mid-show.
 
 - **Rename LIGHTRIG_OTA network:** the shared hotspot SSID still says `LIGHTRIG_OTA` but now serves both OTA and show control. Rename to something generic (e.g. `LIGHTRIG`) once the final name is decided.
 
@@ -237,7 +242,7 @@ A controller in independent mode runs freely without being affected by or affect
 - **Ignores:** incoming theme/scene (`change`/heartbeat sync), solo (`solo`/`solo_request`/`solo_tag`), dim, and `default`. Does NOT propagate — no other controller goes independent because of this one.
 - **Enter:** dual-button hold, or a targeted `enter_independent` command.
 - **Exit:** dual-button hold (toggle), a broadcast `exit_independent` (releases ALL), or a targeted `exit_independent` (releases one). On exit it re-syncs to current mesh state from the next heartbeat.
-- **Admin UI:** a card listing all independent controllers (from the flag) with a "Release All" and per-controller "Release".
+- **Admin UI:** a card on the control page listing all independent controllers (from the flag) with a "Release All" and per-controller "Release". An indicator on the top status card of both the control and admin pages shows when any controller is in independent mode, just one icon saying more than 0 are independent.
 
 ### Spec — Tiered leader election (Hybrid A)
 
@@ -248,9 +253,13 @@ Problem: the elected leader bridges the mesh to the server, and ESP-NOW + WiFi s
 - **Plumbing:** heartbeats carry the sender's tier (a small int) — `mesh.py` `_broadcast`, `controller.py` `tick_start` / `_become_leader` / reelection. A `button-box`-tagged (or zero-strip) controller builds an empty fixture and skips rendering.
 - **Tags:** `leader` / `button-box` / `light` are reserved election-role tags (UI/colors/reference card already shipped). `no-solo` is a behavior flag.
 
+
+
 # Phase Two — Future Architecture (do not start yet; keep in mind)
 
 Big structural work for after the current phase and roadmap. The **leader failsafe is never eliminated** in any of these — light-controller election always remains the bottom backstop.
+
+- **Live config updates (no reboot):** gracefully apply config changes that don't require hardware re-init (nickname, tags, personal defaults, colors) without a full reboot. Strip-layout changes still require restart. Requires splitting `apply_set_config` into live-apply vs next-boot fields. Add a confirm save and push popup when making a change that requires a restart with a message about which fields cause a restart.
 
 - **Pi/ESP32 hybrid leader boxes (topmost bridge tier):** A Raspberry Pi hosts the server in Docker and holds the configs locally. It serves the control plane over DNS/hostname so phones and laptops connect by name instead of an IP. One or more attached ESP32s drive the ESP-NOW mesh as the bridge (the Pi talks to them over USB/serial). When built, these boxes become the highest election tier — the `leader` tag is moved onto them. Multiple ESP32s per Pi allow additional zones and automatic failover among the Pi's own bridge radios. This is the eventual home of the `leader` tag from the Hybrid A spec.
 
@@ -261,3 +270,10 @@ Big structural work for after the current phase and roadmap. The **leader failsa
 - **Leader / authority hierarchy:** Distinct from the elected bridge leader. A designated authority (the Pi/server) can issue commands all controllers must obey regardless of local button presses. The `type` field in the mesh packet and `apply_state` are the designed extension points.
 
 - **Art-Net integration:** A main node (or bridge device) receives Art-Net DMX-over-IP from professional lighting consoles and translates to ESP-NOW commands. Keep protocol boundaries clean so this layer adds without restructuring the core network.
+
+# Ingest
+
+New things that need to be added to groups, roadmap, or active bugs. Do not delete this section when items have been transferred.
+
+- (empty)
+- 
